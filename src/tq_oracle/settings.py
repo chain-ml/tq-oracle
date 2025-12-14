@@ -57,6 +57,8 @@ class StakewiseAdapterSettings(BaseModel):
     stakewise_exit_max_lookback_blocks: int = STAKEWISE_EXIT_MAX_LOOKBACK_BLOCKS
     extra_addresses: list[str] = Field(default_factory=list)
     skip_exit_queue_scan: bool = False
+    etherscan_api_key: str | None = None
+    etherscan_page_size: int = 1000
 
     model_config = ConfigDict(extra="ignore")
 
