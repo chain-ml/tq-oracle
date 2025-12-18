@@ -20,6 +20,17 @@ from .base import AssetData, BaseAssetAdapter
 
 logger = get_logger(__name__)
 
+# Minimal ABI for validating extra_addresses
+EXTRA_ADDRESS_VALIDATION_ABI = [
+    {
+        "inputs": [],
+        "name": "subvault",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+]
+
 
 class IdleBalancesAdapter(BaseAssetAdapter):
     """Adapter for querying idle balances on the vault chain."""
@@ -88,15 +99,11 @@ class IdleBalancesAdapter(BaseAssetAdapter):
                 self._extra_additional_assets_by_symbol,
             )
 
-        extra_address_candidates = (
-            [
-                self.w3.to_checksum_address(address)
-                for address in idle_cfg.extra_addresses
-                if address
-            ]
-            if config.additional_asset_support
-            else []
-        )
+        extra_address_candidates = [
+            self.w3.to_checksum_address(address)
+            for address in idle_cfg.extra_addresses
+            if address
+        ]
 
         deduped_addresses: dict[str, str] = {}
         for checksum in extra_address_candidates:
@@ -104,10 +111,12 @@ class IdleBalancesAdapter(BaseAssetAdapter):
 
         self._extra_addresses = list(deduped_addresses.values())
         self._extra_addresses_lookup = set(deduped_addresses.keys())
+        self._skip_extra_address_validation = idle_cfg.skip_extra_address_validation
         if self._extra_addresses:
             logger.debug(
-                "Idle balances extra addresses configured: %s",
+                "Idle balances extra addresses configured: %s (validation=%s)",
                 self._extra_addresses,
+                "skipped" if self._skip_extra_address_validation else "enabled",
             )
 
         self._rpc_sem = asyncio.Semaphore(getattr(self.config, "max_calls", 5))
@@ -186,6 +195,10 @@ class IdleBalancesAdapter(BaseAssetAdapter):
             List of AssetData objects from main vault and all subvaults
         """
         subvault_addresses = await self._fetch_subvault_addresses()
+
+        if self._extra_addresses:
+            await self._validate_extra_addresses(subvault_addresses)
+
         vault_addresses = [self.config.vault_address_required] + subvault_addresses
         seen_addresses = {addr.lower() for addr in vault_addresses}
         for extra_address in self._extra_addresses:
@@ -292,6 +305,61 @@ class IdleBalancesAdapter(BaseAssetAdapter):
     async def _fetch_subvault_addresses(self) -> list[str]:
         """Get the subvault addresses for the given vault."""
         return await fetch_subvault_addresses(self.config)
+
+    async def _validate_extra_addresses(
+        self,
+        subvault_addresses: list[str],
+    ) -> None:
+        """Validate that extra_addresses return correct subvault values."""
+        if not self._extra_addresses or self._skip_extra_address_validation:
+            return
+
+        logger.debug(
+            "Validating %d extra_addresses against %d subvaults",
+            len(self._extra_addresses),
+            len(subvault_addresses),
+        )
+
+        normalized_subvaults = {addr.lower() for addr in subvault_addresses}
+
+        async def validate_one(extra_addr: str) -> str | None:
+            """Returns error message or None if valid."""
+            checksum_addr = self.w3.to_checksum_address(extra_addr)
+            contract = self.w3.eth.contract(
+                address=checksum_addr, abi=EXTRA_ADDRESS_VALIDATION_ABI
+            )
+
+            try:
+                returned_subvault: str = await self._rpc(
+                    contract.functions.subvault().call,
+                    block_identifier=self.block_number,
+                )
+            except (ProviderConnectionError, ValueError) as e:
+                return f"{extra_addr}: failed to call .subvault() - {e}"
+
+            if returned_subvault.lower() not in normalized_subvaults:
+                return (
+                    f"{extra_addr}: .subvault() returned {returned_subvault} "
+                    f"which is not in auto-discovered subvaults"
+                )
+            return None
+
+        results = await asyncio.gather(
+            *[validate_one(addr) for addr in self._extra_addresses]
+        )
+        validation_errors = [e for e in results if e is not None]
+
+        if validation_errors:
+            error_list = "\n  - ".join(validation_errors)
+            raise ValueError(
+                f"extra_address validation failed:\n  - {error_list}\n"
+                f"If these addresses are intentional, set 'skip_extra_address_validation = true' "
+                f"in [adapters.idle_balances] and pass the --allow-dangerous CLI flag."
+            )
+
+        logger.debug(
+            "All %d extra_addresses validated successfully", len(self._extra_addresses)
+        )
 
     async def _fetch_supported_assets(self) -> list[str]:
         """Get the supported assets for the given vault."""

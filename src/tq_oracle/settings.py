@@ -45,6 +45,13 @@ class IdleBalancesAdapterSettings(BaseModel):
 
     extra_tokens: dict[str, str] = Field(default_factory=dict)
     extra_addresses: list[str] = Field(default_factory=list)
+    skip_extra_address_validation: bool = Field(
+        default=False,
+        description=(
+            "[DANGEROUS] Skip validation that extra_addresses.subvault() returns an address "
+            "in the auto-discovered subvault list. Requires --allow-dangerous CLI flag."
+        ),
+    )
 
     model_config = ConfigDict(extra="ignore")
 
@@ -390,3 +397,24 @@ class OracleSettings(BaseSettings):
     @property
     def multicall(self) -> str:
         return self._resolve_streth_addresses()["multicall"]
+
+    def get_dangerous_options(self) -> list[str]:
+        """Return a list of enabled dangerous configuration options.
+
+        These options bypass safety checks and require --allow-dangerous to use.
+        """
+        dangerous: list[str] = []
+
+        # Subvault adapter dangerous options
+        for cfg in self.subvault_adapters:
+            addr = cfg.get("subvault_address", "unknown")
+            if cfg.get("skip_subvault_existence_check", False):
+                dangerous.append(
+                    f"subvault_adapters[{addr}].skip_subvault_existence_check"
+                )
+
+        # Idle balances adapter dangerous options
+        if self.adapters.idle_balances.skip_extra_address_validation:
+            dangerous.append("adapters.idle_balances.skip_extra_address_validation")
+
+        return dangerous

@@ -75,9 +75,9 @@ def _process_adapter_results(
             asset_data.append(assets)
 
     if failures:
-        failure_list = ", ".join(name for name, _ in failures)
+        error_details = "\n  - ".join(f"{name}: {e}" for name, e in failures)
         raise ValueError(
-            f"Failed to collect assets from {len(failures)} adapter(s): {failure_list}"
+            f"Failed to collect assets from {len(failures)} adapter(s):\n  - {error_details}"
         )
 
 
@@ -99,20 +99,6 @@ async def collect_assets(ctx: PipelineContext) -> None:
     subvault_config_map = {
         cfg["subvault_address"].lower(): cfg for cfg in s.subvault_adapters
     }
-
-    dangerous_configs = [
-        cfg
-        for cfg in s.subvault_adapters
-        if cfg.get("skip_subvault_existence_check", False)
-    ]
-    if dangerous_configs and not s.allow_dangerous:
-        addresses = [cfg["subvault_address"] for cfg in dangerous_configs]
-        raise ValueError(
-            f"Configuration uses 'skip_subvault_existence_check' for subvault(s): "
-            f"{', '.join(addresses)}. This is a dangerous operation that bypasses "
-            f"subvault existence validation. You must explicitly allow this by "
-            f"passing the --allow-dangerous CLI flag."
-        )
 
     # Validate subvault_adapters config references existing subvaults
     if s.subvault_adapters:

@@ -181,6 +181,8 @@ async def test_default_additional_tokens_tvl_only(config, monkeypatch):
 async def test_fetch_all_assets_includes_extra_addresses(config, monkeypatch):
     extra_address = "0x0000000000000000000000000000000000000009"
     config.adapters.idle_balances.extra_addresses = [extra_address]
+    # Skip validation since test address doesn't have .subvault()/.oracle() methods
+    config.adapters.idle_balances.skip_extra_address_validation = True
     adapter = IdleBalancesAdapter(config)
 
     async def fake_fetch_subvault_addresses():
@@ -207,6 +209,66 @@ async def test_fetch_all_assets_includes_extra_addresses(config, monkeypatch):
         adapter.w3.to_checksum_address(extra_address),
     }
     assert set(recorded) == expected
+
+
+@pytest.mark.asyncio
+async def test_extra_address_validation_fails_on_mismatched_subvault(
+    config, monkeypatch
+):
+    """Test that validation fails when extra_address returns subvault not in list."""
+    extra_address = "0x0000000000000000000000000000000000000009"
+    config.adapters.idle_balances.extra_addresses = [extra_address]
+    adapter = IdleBalancesAdapter(config)
+
+    subvault_addresses = ["0x00000000000000000000000000000000000000AA"]
+
+    # Mock _rpc to return subvault not in list
+    async def fake_rpc(fn, *args, **kwargs):
+        fn_name = str(fn)
+        if "subvault" in fn_name:
+            return "0x00000000000000000000000000000000000000DD"  # Not in subvault list
+        return await fn(*args, **kwargs)
+
+    monkeypatch.setattr(adapter, "_rpc", fake_rpc)
+
+    with pytest.raises(ValueError, match=r"which is not in auto-discovered subvaults"):
+        await adapter._validate_extra_addresses(subvault_addresses)
+
+
+@pytest.mark.asyncio
+async def test_extra_address_validation_passes_when_valid(config, monkeypatch):
+    """Test that validation passes when extra_address returns correct subvault."""
+    extra_address = "0x0000000000000000000000000000000000000009"
+    config.adapters.idle_balances.extra_addresses = [extra_address]
+    adapter = IdleBalancesAdapter(config)
+
+    subvault_addresses = ["0x00000000000000000000000000000000000000AA"]
+
+    # Mock _rpc to return correct subvault
+    async def fake_rpc(fn, *args, **kwargs):
+        fn_name = str(fn)
+        if "subvault" in fn_name:
+            return subvault_addresses[0]  # Valid subvault
+        return await fn(*args, **kwargs)
+
+    monkeypatch.setattr(adapter, "_rpc", fake_rpc)
+
+    # Should not raise
+    await adapter._validate_extra_addresses(subvault_addresses)
+
+
+@pytest.mark.asyncio
+async def test_extra_address_validation_skipped_when_flag_set(config):
+    """Test that validation is skipped when skip_extra_address_validation is True."""
+    extra_address = "0x0000000000000000000000000000000000000009"
+    config.adapters.idle_balances.extra_addresses = [extra_address]
+    config.adapters.idle_balances.skip_extra_address_validation = True
+    adapter = IdleBalancesAdapter(config)
+
+    # Should not make any RPC calls, just return
+    await adapter._validate_extra_addresses(
+        ["0x00000000000000000000000000000000000000AA"],
+    )
 
 
 @pytest.mark.asyncio
@@ -253,5 +315,8 @@ def test_additional_assets_can_be_disabled(config):
 
     assert adapter._default_additional_assets == []
     assert adapter._extra_additional_assets_by_symbol == {}
-    assert adapter._extra_addresses == []
+    # extra_addresses is decoupled from additional_asset_support
+    assert adapter._extra_addresses == [
+        adapter.w3.to_checksum_address("0x00000000000000000000000000000000000000BB")
+    ]
     assert merged == [base_asset]

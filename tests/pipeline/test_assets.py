@@ -38,7 +38,8 @@ def test_process_adapter_results_raises_on_adapter_failure():
     asset_data = []
 
     with pytest.raises(
-        ValueError, match=r"Failed to collect assets from 1 adapter\(s\): stakewise"
+        ValueError,
+        match=r"(?s)Failed to collect assets from 1 adapter\(s\):.*stakewise: RPC connection failed",
     ):
         _process_adapter_results(tasks_info, results, asset_data, log)
 
@@ -59,7 +60,7 @@ def test_process_adapter_results_raises_on_multiple_failures():
 
     with pytest.raises(
         ValueError,
-        match=r"Failed to collect assets from 2 adapter\(s\): idle_balances, custom_adapter",
+        match=r"(?s)Failed to collect assets from 2 adapter\(s\):.*idle_balances:.*custom_adapter:",
     ):
         _process_adapter_results(tasks_info, results, asset_data, log)
 

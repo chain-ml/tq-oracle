@@ -218,6 +218,14 @@ def report(
                 param_hint=["--private-key", "TQ_ORACLE_PRIVATE_KEY"],
             )
 
+    dangerous_options = state.settings.get_dangerous_options()
+    if dangerous_options and not state.settings.allow_dangerous:
+        options_list = "\n  - ".join(dangerous_options)
+        raise typer.BadParameter(
+            f"Configuration uses dangerous options:\n  - {options_list}\n"
+            f"Pass --allow-dangerous to enable these options."
+        )
+
     from .pipeline.run import run_report
 
     asyncio.run(run_report(state, state.settings.vault_address_required))

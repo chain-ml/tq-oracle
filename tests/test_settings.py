@@ -124,3 +124,48 @@ def test_additional_asset_support_toggle(tmp_path, monkeypatch):
     settings = OracleSettings()
 
     assert settings.additional_asset_support is False
+
+
+def test_get_dangerous_options_empty_by_default():
+    """No dangerous options enabled by default."""
+    settings = OracleSettings()
+    assert settings.get_dangerous_options() == []
+
+
+def test_get_dangerous_options_skip_extra_address_validation(tmp_path, monkeypatch):
+    """Detects skip_extra_address_validation as dangerous."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        dedent(
+            """
+            [adapters.idle_balances]
+            skip_extra_address_validation = true
+            """
+        ).strip()
+    )
+    monkeypatch.setenv("TQ_ORACLE_CONFIG", str(config_path))
+
+    settings = OracleSettings()
+
+    dangerous = settings.get_dangerous_options()
+    assert dangerous == ["adapters.idle_balances.skip_extra_address_validation"]
+
+
+def test_get_dangerous_options_skip_subvault_existence_check(tmp_path, monkeypatch):
+    """Detects skip_subvault_existence_check as dangerous."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        dedent(
+            """
+            [[subvault_adapters]]
+            subvault_address = "0xABC"
+            skip_subvault_existence_check = true
+            """
+        ).strip()
+    )
+    monkeypatch.setenv("TQ_ORACLE_CONFIG", str(config_path))
+
+    settings = OracleSettings()
+
+    dangerous = settings.get_dangerous_options()
+    assert dangerous == ["subvault_adapters[0xABC].skip_subvault_existence_check"]
