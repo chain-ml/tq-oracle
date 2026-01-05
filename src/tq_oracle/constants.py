@@ -95,6 +95,72 @@ STAKEWISE_ADDRESSES: dict[str, StakewiseAddresses] = {
     "mainnet": STAKEWISE_MAINNET_ADDRESSES,
 }
 
+# Aave V3 token addresses per network
+# Pool address for Aave V3 on mainnet
+AAVE_V3_POOL_MAINNET = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+
+# Aave V3 aTokens (supply) on mainnet
+AAVE_V3_SUPPLY_TOKENS_MAINNET: dict[str, str] = {
+    "WETH": "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8",
+    "wstETH": "0x0B925eD163218f6662a35e0f0371Ac234f9E9371",
+    "USDC": "0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c",
+    "USDT": "0x23878914EFE38d27C4D67Ab83ed1b93A74D4086a",
+    "USDe": "0x4c612E3B15b96Ff9A6faED838F8d07d479a8dD4c",
+}
+
+# Aave V3 variable debt tokens (borrow) on mainnet
+AAVE_V3_BORROW_TOKENS_MAINNET: dict[str, str] = {
+    "WETH": "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE",
+    "wstETH": "0xC96113eED8cAB59cD8A66813bCB0cEb29F30e2e1",
+    "USDC": "0x72E95b8931767C79bA4EeE721354d6E99a61D004",
+    "USDT": "0x6df1C1E379bC5a00a7b4C6e67A203333772f45A8",
+    "USDe": "0x028f7886F3e937f8479efaD64f31B3fE1119857a",
+}
+
+# Pendle oracle address on mainnet
+# https://docs.pendle.finance/Developers/Contracts/PendleOracle
+PENDLE_ORACLE_MAINNET = "0x9a9Fa8338dd5E5B2188006f1Cd2Ef26d921650C2"
+
+# Example Pendle markets structure (can be overridden in TOML):
+# This is just for reference - actual markets should be configured per-deployment
+PENDLE_MARKETS_EXAMPLE: dict[str, dict[str, str]] = {
+    # "market_name": {
+    #     "market": "0x...",  # Pendle market address
+    #     "accounting_asset": "0x...",  # Asset to price in (e.g., USDC, WETH)
+    # }
+}
+
+# Chainlink price feed addresses
+# https://docs.chain.link/data-feeds/price-feeds/addresses
+CHAINLINK_ETH_USD_MAINNET = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"  # ETH/USD (8 decimals)
+CHAINLINK_ETH_USD_SEPOLIA = "0x694AA1769357215DE4FAC081bf1f309aDC325306"  # ETH/USD (8 decimals)
+CHAINLINK_ETH_USD_BASE = "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70"  # ETH/USD (8 decimals)
+
+CHAINLINK_FEEDS: dict[str, str] = {
+    "mainnet": CHAINLINK_ETH_USD_MAINNET,
+    "sepolia": CHAINLINK_ETH_USD_SEPOLIA,
+    "base": CHAINLINK_ETH_USD_BASE,
+}
+
+# CoinGecko API settings
+COINGECKO_API_BASE_URL = "https://api.coingecko.com/api/v3"
+COINGECKO_PRO_API_BASE_URL = "https://pro-api.coingecko.com/api/v3"
+
+# Default CoinGecko ID mappings for common tokens
+# Format: token_address (lowercase) -> coingecko_id
+COINGECKO_DEFAULT_IDS: dict[str, str] = {
+    # Mainnet stablecoins
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "usd-coin",  # USDC
+    "0xdac17f958d2ee523a2206206994597c13d831ec7": "tether",  # USDT
+    "0x6b175474e89094c44da98b954eedeac495271d0f": "dai",  # DAI
+    "0x4c9edd5852cd905f086c759e8383e09bff1e68b3": "usde",  # USDe
+    "0x0000206329b97db379d5e1bf586bbdb969c63274": "usda",  # USDA
+    # ETH and derivatives
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "weth",  # WETH
+    "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0": "wrapped-steth",  # wstETH
+    "0xf1c9acdc66974dfb6decb12aa385b9cd01190e38": "os-eth",  # osETH
+}
+
 DEFAULT_ADDITIONAL_ASSETS: dict[str, dict[str, str]] = {
     "mainnet": {
         "osETH": STAKEWISE_MAINNET_ADDRESSES["os_token"],

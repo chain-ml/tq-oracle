@@ -17,6 +17,41 @@ extra_tokens = { osETH = "0xf1C9acDc66974dFB6dEcB12aA385b9cD01190E38" }
 [adapters.stakewise]
 stakewise_vault_addresses = ["0xe6D8d8Ac54461b1c5ed15740eeE322043F696C08"]
 
+# Aave V3 adapter configuration (optional - defaults to mainnet if not specified)
+[adapters.aave_v3]
+pool_address = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+base_asset_type = "eth"  # 'eth' or 'usd'
+
+# Supply tokens (aTokens) - optional, defaults to common ETH mainnet tokens
+[adapters.aave_v3.supply_tokens]
+WETH = "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8"
+wstETH = "0x0B925eD163218f6662a35e0f0371Ac234f9E9371"
+USDC = "0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c"
+USDT = "0x23878914EFE38d27C4D67Ab83ed1b93A74D4086a"
+USDe = "0x4c612E3B15b96Ff9A6faED838F8d07d479a8dD4c"
+
+# Borrow tokens (variable debt) - optional, defaults to common ETH mainnet tokens
+[adapters.aave_v3.borrow_tokens]
+WETH = "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE"
+wstETH = "0xC96113eED8cAB59cD8A66813bCB0cEb29F30e2e1"
+USDC = "0x72E95b8931767C79bA4EeE721354d6E99a61D004"
+USDT = "0x6df1C1E379bC5a00a7b4C6e67A203333772f45A8"
+USDe = "0x028f7886F3e937f8479efaD64f31B3fE1119857a"
+
+# Pendle adapter configuration
+[adapters.pendle]
+oracle_address = "0x9a9Fa8338dd5E5B2188006f1Cd2Ef26d921650C2"
+
+# Configure Pendle markets to track
+# Each market needs: market address and accounting_asset
+[adapters.pendle.markets.usde_jul2025]
+market = "0xXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Pendle market address
+accounting_asset = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC
+
+[adapters.pendle.markets.wsteth_dec2025]
+market = "0xYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"  # Pendle market address
+accounting_asset = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"  # WETH
+
 # Example: Additional idle_balances reporting for a specific subvault
 [[subvault_adapters]]
 subvault_address = "0xb764428a29EAEbe8e2301F5924746F818b331F5A"
@@ -30,6 +65,19 @@ subvault_address = "0x9663ca24Ef69Ee379B4a18981858F65CB804Cc2D"
 additional_adapters = ["stakewise"]
 skip_subvault_existence_check = true
 adapter_overrides = { stakewise = { stakewise_vault_addresses = ["0xe6D8d8Ac54461b1c5ed15740eeE322043F696C08"] } }
+
+# Example: Aave V3 adapter for a subvault with leveraged positions
+[[subvault_adapters]]
+subvault_address = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+additional_adapters = ["aave_v3"]
+skip_subvault_existence_check = false
+
+# Example: Pendle adapter for a subvault with PT/LP positions
+[[subvault_adapters]]
+subvault_address = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+additional_adapters = ["pendle"]
+# Can override markets per subvault if needed
+# adapter_overrides = { pendle = { markets = { ... } } }
 
 # RPC rate limiting (optional)
 max_calls = 3
@@ -49,3 +97,25 @@ pyth_enabled = true
 pyth_max_confidence_ratio = 0.1  # Maximum allowed confidence ratio for Pyth prices (default: 0.03)
 pyth_hermes_endpoint = "https://hermes.pyth.network"
 pyth_staleness_threshold = 60
+
+# Chainlink settings (optional - for stable USD stablecoin pricing)
+# Enable to use Chainlink ETH/USD oracle instead of CoW Swap for stablecoins
+chainlink_enabled = false
+chainlink_eth_usd_feed = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"  # Mainnet ETH/USD
+chainlink_stablecoins = [
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  # USDC
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7",  # USDT
+    "0x6B175474E89094C44Da98b954EedeAC495271d0F",  # DAI
+]
+
+# CoinGecko settings (optional - for batched API-based pricing)
+# Enable to use CoinGecko API for stable, batched pricing
+# API key is optional - uses free tier if not provided (set via TQ_ORACLE_COINGECKO_API_KEY env var)
+coingecko_enabled = false
+# coingecko_api_key is read from environment variable TQ_ORACLE_COINGECKO_API_KEY
+
+# Map token addresses to CoinGecko IDs (common tokens have defaults)
+[coingecko_token_ids]
+"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" = "usd-coin"  # USDC
+"0xdAC17F958D2ee523a2206206994597C13D831ec7" = "tether"    # USDT
+"0x6B175474E89094C44Da98b954EedeAC495271d0F" = "dai"        # DAI

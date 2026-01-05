@@ -61,12 +61,39 @@ class StakewiseAdapterSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class AaveV3AdapterSettings(BaseModel):
+    """Configuration options for Aave V3 adapter defaults."""
+
+    pool_address: str | None = None
+    supply_tokens: dict[str, str] = Field(default_factory=dict)
+    borrow_tokens: dict[str, str] = Field(default_factory=dict)
+    base_asset_type: str = "eth"  # 'eth' or 'usd'
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PendleAdapterSettings(BaseModel):
+    """Configuration options for Pendle PT/LP adapter defaults."""
+
+    oracle_address: str | None = None
+    markets: dict[str, dict[str, str]] = Field(default_factory=dict)
+    # markets structure: { "market_name": { "market": "0x...", "accounting_asset": "0x..." } }
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class AdapterSettings(BaseModel):
     stakewise: StakewiseAdapterSettings = Field(
         default_factory=StakewiseAdapterSettings
     )
     idle_balances: IdleBalancesAdapterSettings = Field(
         default_factory=IdleBalancesAdapterSettings
+    )
+    aave_v3: AaveV3AdapterSettings = Field(
+        default_factory=AaveV3AdapterSettings
+    )
+    pendle: PendleAdapterSettings = Field(
+        default_factory=PendleAdapterSettings
     )
 
     model_config = ConfigDict(extra="ignore")
@@ -127,6 +154,16 @@ class OracleSettings(BaseSettings):
     pyth_max_confidence_ratio: float = 0.03
     pyth_dynamic_discovery_enabled: bool = True
 
+    # Chainlink-specific settings
+    chainlink_enabled: bool = False
+    chainlink_eth_usd_feed: str | None = None
+    chainlink_stablecoins: list[str] = Field(default_factory=list)  # Stablecoins to price via Chainlink
+
+    # CoinGecko-specific settings
+    coingecko_enabled: bool = False
+    coingecko_api_key: SecretStr | None = None  # Optional - uses free tier if not provided
+    coingecko_token_ids: dict[str, str] = Field(default_factory=dict)  # token_address -> coingecko_id mapping
+
     # --- RPC settings ---
     max_calls: int = 3
     rpc_max_concurrent_calls: int = 5
@@ -151,7 +188,7 @@ class OracleSettings(BaseSettings):
         extra="ignore",  # ignore unknown keys in env/config file
     )
 
-    @field_validator("private_key", "safe_txn_srvc_api_key", mode="before")
+    @field_validator("private_key", "safe_txn_srvc_api_key", "coingecko_api_key", mode="before")
     @classmethod
     def wrap_secrets(cls, v: Any) -> SecretStr | None:
         """Wrap string secrets in SecretStr."""

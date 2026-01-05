@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from .aave_v3 import AaveV3Adapter
 from .base import BaseAssetAdapter
 from .idle_balances import IdleBalancesAdapter
+from .pendle import PendleAdapter
 from .streth import StrETHAdapter
 from .stakewise import StakeWiseAdapter
 
@@ -9,6 +11,8 @@ ADAPTER_REGISTRY: dict[str, type[BaseAssetAdapter]] = {
     "idle_balances": IdleBalancesAdapter,
     "streth": StrETHAdapter,
     "stakewise": StakeWiseAdapter,
+    "aave_v3": AaveV3Adapter,
+    "pendle": PendleAdapter,
 }
 
 ASSET_ADAPTERS: list[type[BaseAssetAdapter]] = list(ADAPTER_REGISTRY.values())
@@ -38,7 +42,9 @@ def get_adapter_class(adapter_name: str) -> type[BaseAssetAdapter]:
 __all__ = [
     "ASSET_ADAPTERS",
     "ADAPTER_REGISTRY",
+    "AaveV3Adapter",
     "IdleBalancesAdapter",
+    "PendleAdapter",
     "StrETHAdapter",
     "StakeWiseAdapter",
     "get_adapter_class",
