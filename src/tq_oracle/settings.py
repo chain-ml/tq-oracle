@@ -83,6 +83,7 @@ class OracleSettings(BaseSettings):
 
     # --- global toggles ---
     dry_run: bool = True
+    dry_run_report_indent: bool = True
     additional_asset_support: bool = True
 
     # --- core addresses / endpoints ---

@@ -30,6 +30,7 @@ Where possible, values are gathered from blockchain calls but discovery is not a
 | block_number | `--block-number` | TQ_ORACLE_BLOCK_NUMBER | block_number | latest at runtime | Snapshot height for all calls; fetched if not provided. |
 | eth_mainnet_rpc | none | TQ_ORACLE_ETH_MAINNET_RPC | eth_mainnet_rpc | null | Reserved for cross-chain lookups when vault not on mainnet. |
 | dry_run | `--dry-run/--no-dry-run` | TQ_ORACLE_DRY_RUN | dry_run | true | When false, Safe broadcast mode; requires `safe_address` + `private_key`. |
+| dry_run_report_indent | none | none | dry_run_report_indent | true | Whether or not to indent report output |
 | safe_address | none | TQ_ORACLE_SAFE_ADDRESS | safe_address | null | Gnosis Safe used for submission; mandatory when `dry_run` is false. |
 | private_key | none | TQ_ORACLE_PRIVATE_KEY | private_key | null | Signer for Safe tx; env/CLI only; config file rejected. |
 | safe_txn_srvc_api_key | none | TQ_ORACLE_SAFE_TXN_SRVC_API_KEY | safe_txn_srvc_api_key | null | Optional Safe Transaction Service API key; env-only; config file rejected. |
