@@ -17,4 +17,10 @@ PRICE_ADAPTERS = [
     ETHAdapter,
 ]
 
-__all__ = ["PRICE_ADAPTERS", "ChainlinkAdapter", "CoinGeckoAdapter", "CowSwapAdapter", "ETHAdapter"]
+__all__ = [
+    "PRICE_ADAPTERS",
+    "ChainlinkAdapter",
+    "CoinGeckoAdapter",
+    "CowSwapAdapter",
+    "ETHAdapter",
+]

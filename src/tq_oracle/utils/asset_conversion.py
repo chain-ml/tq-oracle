@@ -87,16 +87,26 @@ async def convert_shares_to_assets_erc4626(
     # ERC-4626 ABI for convertToAssets and asset
     erc4626_abi = [
         {
-            "inputs": [{"internalType": "uint256", "name": "shares", "type": "uint256"}],
+            "inputs": [
+                {"internalType": "uint256", "name": "shares", "type": "uint256"}
+            ],
             "name": "convertToAssets",
-            "outputs": [{"internalType": "uint256", "name": "assets", "type": "uint256"}],
+            "outputs": [
+                {"internalType": "uint256", "name": "assets", "type": "uint256"}
+            ],
             "stateMutability": "view",
             "type": "function",
         },
         {
             "inputs": [],
             "name": "asset",
-            "outputs": [{"internalType": "address", "name": "assetTokenAddress", "type": "address"}],
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "assetTokenAddress",
+                    "type": "address",
+                }
+            ],
             "stateMutability": "view",
             "type": "function",
         },
@@ -200,7 +210,9 @@ class RWAConverter:
         Returns:
             Tuple of (underlying_asset_address, amount)
         """
-        return await convert_shares_to_assets_erc4626(vault_address, shares, self.config)
+        return await convert_shares_to_assets_erc4626(
+            vault_address, shares, self.config
+        )
 
     async def convert_to_eth(
         self,
@@ -255,7 +267,10 @@ class RWAConverter:
             vault_address, shares
         )
 
-        if usd_asset_address and underlying_address.lower() != usd_asset_address.lower():
+        if (
+            usd_asset_address
+            and underlying_address.lower() != usd_asset_address.lower()
+        ):
             logger.warning(
                 "RWA vault %s has underlying %s but expected %s",
                 vault_address,

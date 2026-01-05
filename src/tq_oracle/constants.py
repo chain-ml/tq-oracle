@@ -132,9 +132,15 @@ PENDLE_MARKETS_EXAMPLE: dict[str, dict[str, str]] = {
 
 # Chainlink price feed addresses
 # https://docs.chain.link/data-feeds/price-feeds/addresses
-CHAINLINK_ETH_USD_MAINNET = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"  # ETH/USD (8 decimals)
-CHAINLINK_ETH_USD_SEPOLIA = "0x694AA1769357215DE4FAC081bf1f309aDC325306"  # ETH/USD (8 decimals)
-CHAINLINK_ETH_USD_BASE = "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70"  # ETH/USD (8 decimals)
+CHAINLINK_ETH_USD_MAINNET = (
+    "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"  # ETH/USD (8 decimals)
+)
+CHAINLINK_ETH_USD_SEPOLIA = (
+    "0x694AA1769357215DE4FAC081bf1f309aDC325306"  # ETH/USD (8 decimals)
+)
+CHAINLINK_ETH_USD_BASE = (
+    "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70"  # ETH/USD (8 decimals)
+)
 
 CHAINLINK_FEEDS: dict[str, str] = {
     "mainnet": CHAINLINK_ETH_USD_MAINNET,

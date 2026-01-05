@@ -71,9 +71,7 @@ class ChainlinkAdapter(BasePriceAdapter):
             self.eth_usd_feed = CHAINLINK_FEEDS[network_key]
 
         # Get stablecoins to price
-        self.stablecoins = set(
-            addr.lower() for addr in config.chainlink_stablecoins
-        )
+        self.stablecoins = set(addr.lower() for addr in config.chainlink_stablecoins)
 
         if not self.stablecoins:
             logger.info(
@@ -96,7 +94,11 @@ class ChainlinkAdapter(BasePriceAdapter):
                     {"internalType": "int256", "name": "answer", "type": "int256"},
                     {"internalType": "uint256", "name": "startedAt", "type": "uint256"},
                     {"internalType": "uint256", "name": "updatedAt", "type": "uint256"},
-                    {"internalType": "uint80", "name": "answeredInRound", "type": "uint80"},
+                    {
+                        "internalType": "uint80",
+                        "name": "answeredInRound",
+                        "type": "uint80",
+                    },
                 ],
                 "stateMutability": "view",
                 "type": "function",

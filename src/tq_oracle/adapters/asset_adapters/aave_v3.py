@@ -171,7 +171,13 @@ class AaveV3Adapter(BaseAssetAdapter):
         # Fetch supply positions (aTokens)
         supply_tasks = []
         for symbol, token_address in self.supply_tokens.items():
-            supply_tasks.append((symbol, token_address, self._balance_of(token_address, subvault_address)))
+            supply_tasks.append(
+                (
+                    symbol,
+                    token_address,
+                    self._balance_of(token_address, subvault_address),
+                )
+            )
 
         for symbol, token_address, balance_coro in supply_tasks:
             balance = await balance_coro
@@ -192,7 +198,13 @@ class AaveV3Adapter(BaseAssetAdapter):
         # Fetch borrow positions (variable debt tokens)
         borrow_tasks = []
         for symbol, token_address in self.borrow_tokens.items():
-            borrow_tasks.append((symbol, token_address, self._balance_of(token_address, subvault_address)))
+            borrow_tasks.append(
+                (
+                    symbol,
+                    token_address,
+                    self._balance_of(token_address, subvault_address),
+                )
+            )
 
         for symbol, token_address, balance_coro in borrow_tasks:
             balance = await balance_coro

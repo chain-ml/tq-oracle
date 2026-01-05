@@ -108,7 +108,13 @@ class PendleAdapter(BaseAssetAdapter):
                     {"internalType": "uint32", "name": "duration", "type": "uint32"},
                 ],
                 "name": "getPtToAssetRate",
-                "outputs": [{"internalType": "uint256", "name": "ptToAssetRate", "type": "uint256"}],
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "ptToAssetRate",
+                        "type": "uint256",
+                    }
+                ],
                 "stateMutability": "view",
                 "type": "function",
             },
@@ -118,7 +124,13 @@ class PendleAdapter(BaseAssetAdapter):
                     {"internalType": "uint32", "name": "duration", "type": "uint32"},
                 ],
                 "name": "getLpToAssetRate",
-                "outputs": [{"internalType": "uint256", "name": "lpToAssetRate", "type": "uint256"}],
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "lpToAssetRate",
+                        "type": "uint256",
+                    }
+                ],
                 "stateMutability": "view",
                 "type": "function",
             },
@@ -130,9 +142,21 @@ class PendleAdapter(BaseAssetAdapter):
                 "inputs": [],
                 "name": "readTokens",
                 "outputs": [
-                    {"internalType": "contract IStandardizedYield", "name": "SY", "type": "address"},
-                    {"internalType": "contract IPPrincipalToken", "name": "PT", "type": "address"},
-                    {"internalType": "contract IPYieldToken", "name": "YT", "type": "address"},
+                    {
+                        "internalType": "contract IStandardizedYield",
+                        "name": "SY",
+                        "type": "address",
+                    },
+                    {
+                        "internalType": "contract IPPrincipalToken",
+                        "name": "PT",
+                        "type": "address",
+                    },
+                    {
+                        "internalType": "contract IPYieldToken",
+                        "name": "YT",
+                        "type": "address",
+                    },
                 ],
                 "stateMutability": "view",
                 "type": "function",

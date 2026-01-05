@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING
 import backoff
 import requests
 
-from ...constants import COINGECKO_API_BASE_URL, COINGECKO_DEFAULT_IDS, COINGECKO_PRO_API_BASE_URL
+from ...constants import (
+    COINGECKO_API_BASE_URL,
+    COINGECKO_DEFAULT_IDS,
+    COINGECKO_PRO_API_BASE_URL,
+)
 from .base import BasePriceAdapter, PriceData
 
 if TYPE_CHECKING:
@@ -62,7 +66,11 @@ class CoinGeckoAdapter(BasePriceAdapter):
         self._skip = False
 
         # API configuration
-        self.api_key = config.coingecko_api_key.get_secret_value() if config.coingecko_api_key else None
+        self.api_key = (
+            config.coingecko_api_key.get_secret_value()
+            if config.coingecko_api_key
+            else None
+        )
 
         # Use Pro API if key provided, otherwise free tier
         if self.api_key:
@@ -84,9 +92,7 @@ class CoinGeckoAdapter(BasePriceAdapter):
             self.token_ids[addr.lower()] = cg_id
 
         if not self.token_ids:
-            logger.info(
-                "No tokens configured for CoinGecko adapter, will be skipped"
-            )
+            logger.info("No tokens configured for CoinGecko adapter, will be skipped")
             self._skip = True
             return
 

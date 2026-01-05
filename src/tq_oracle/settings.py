@@ -89,12 +89,8 @@ class AdapterSettings(BaseModel):
     idle_balances: IdleBalancesAdapterSettings = Field(
         default_factory=IdleBalancesAdapterSettings
     )
-    aave_v3: AaveV3AdapterSettings = Field(
-        default_factory=AaveV3AdapterSettings
-    )
-    pendle: PendleAdapterSettings = Field(
-        default_factory=PendleAdapterSettings
-    )
+    aave_v3: AaveV3AdapterSettings = Field(default_factory=AaveV3AdapterSettings)
+    pendle: PendleAdapterSettings = Field(default_factory=PendleAdapterSettings)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -157,12 +153,18 @@ class OracleSettings(BaseSettings):
     # Chainlink-specific settings
     chainlink_enabled: bool = False
     chainlink_eth_usd_feed: str | None = None
-    chainlink_stablecoins: list[str] = Field(default_factory=list)  # Stablecoins to price via Chainlink
+    chainlink_stablecoins: list[str] = Field(
+        default_factory=list
+    )  # Stablecoins to price via Chainlink
 
     # CoinGecko-specific settings
     coingecko_enabled: bool = False
-    coingecko_api_key: SecretStr | None = None  # Optional - uses free tier if not provided
-    coingecko_token_ids: dict[str, str] = Field(default_factory=dict)  # token_address -> coingecko_id mapping
+    coingecko_api_key: SecretStr | None = (
+        None  # Optional - uses free tier if not provided
+    )
+    coingecko_token_ids: dict[str, str] = Field(
+        default_factory=dict
+    )  # token_address -> coingecko_id mapping
 
     # --- RPC settings ---
     max_calls: int = 3
@@ -188,7 +190,9 @@ class OracleSettings(BaseSettings):
         extra="ignore",  # ignore unknown keys in env/config file
     )
 
-    @field_validator("private_key", "safe_txn_srvc_api_key", "coingecko_api_key", mode="before")
+    @field_validator(
+        "private_key", "safe_txn_srvc_api_key", "coingecko_api_key", mode="before"
+    )
     @classmethod
     def wrap_secrets(cls, v: Any) -> SecretStr | None:
         """Wrap string secrets in SecretStr."""
