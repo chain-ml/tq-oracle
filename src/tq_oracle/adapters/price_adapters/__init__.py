@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from .cow_swap import CowSwapAdapter
 from .eth import ETHAdapter
 from .pyth import PythAdapter
+
 PRICE_ADAPTERS = [
-    CowSwapAdapter,
+    PythAdapter,
     ETHAdapter,
 ]
 
