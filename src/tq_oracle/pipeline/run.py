@@ -7,6 +7,7 @@ import asyncio
 from web3 import Web3
 
 from ..abi import load_fee_manager_abi, load_vault_abi
+from ..report.supported_assets import fetch_supported_assets
 from ..state import AppState
 from .assets import collect_assets
 from .context import PipelineContext
@@ -110,6 +111,11 @@ async def run_report(state: AppState, vault_address: str) -> None:
     await run_preflight(ctx)
     await collect_assets(ctx)
     await price_assets(ctx)
+
+    # Fetch supported assets from Oracle contract for calldata filtering
+    log.info("Fetching supported assets from Oracle...")
+    ctx.supported_assets = await fetch_supported_assets(s)
+
     await build_report(ctx)
     await publish_report(ctx)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..adapters.asset_adapters.base import AssetData
 from ..state import AppState
 from ..processors import AggregatedAssets
 from ..processors import FinalPrices
@@ -15,10 +16,13 @@ class PipelineContext:
     vault_address: str
     base_asset: str | None = None
     aggregated: AggregatedAssets | None = None
+    raw_assets: list[AssetData] | None = None
+    subvault_asset_map: dict[str, list[AssetData]] | None = None
     price_data: PriceData | None = None
     total_assets: int | None = None
     final_prices: FinalPrices | None = None
     report: OracleReport | None = None
+    supported_assets: set[str] | None = None
 
     @property
     def aggregated_required(self) -> AggregatedAssets:

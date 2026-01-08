@@ -21,18 +21,22 @@ from .generator import OracleReport
 logger = logging.getLogger(__name__)
 
 
-async def publish_to_stdout(report: OracleReport, oracle_address: str) -> None:
+async def publish_to_stdout(
+    report: OracleReport, oracle_address: str, supported_assets: set[str] | None = None
+) -> None:
     """Publish report to stdout (dry run mode).
 
     Args:
         report: The oracle report to publish
         oracle_address: The address of the oracle contract
+        supported_assets: Set of supported asset addresses for filtering calldata
 
     This corresponds to the "Report published to stdout" step in the flowchart.
     """
     (_, encoded_calldata) = encode_submit_reports(
         oracle_address=oracle_address,
         report=report,
+        supported_assets=supported_assets,
     )
     data = {
         "report": report.to_dict(),
@@ -44,12 +48,14 @@ async def publish_to_stdout(report: OracleReport, oracle_address: str) -> None:
 async def build_transaction(
     config: OracleSettings,
     report: OracleReport,
+    supported_assets: set[str] | None = None,
 ) -> dict[str, str | bytes | int]:
     """Build a submitReports() transaction.
 
     Args:
         config: CLI configuration
         report: The oracle report to submit
+        supported_assets: Set of supported asset addresses for filtering calldata
 
     Returns:
         Transaction data ready to be sent
@@ -59,6 +65,7 @@ async def build_transaction(
     to_address, calldata = encode_submit_reports(
         oracle_address=config.oracle_address,
         report=report,
+        supported_assets=supported_assets,
     )
     logger.debug("Built submitReports() transaction to: %s", to_address)
     logger.debug("Encoded calldata: %s", calldata.hex())
@@ -187,24 +194,26 @@ async def send_to_safe(
 async def publish_report(
     config: OracleSettings,
     report: OracleReport,
+    supported_assets: set[str] | None = None,
 ) -> None:
     """Publish the oracle report based on configuration.
 
     Args:
         config: CLI configuration (determines dry run vs real submission)
         report: The oracle report to publish
+        supported_assets: Set of supported asset addresses for filtering calldata
 
     This handles the branching logic in the flowchart:
     - If dry_run: publish to stdout
     - If not dry_run and Broadcast mode: build transaction, send to Safe
     """
     if config.dry_run:
-        await publish_to_stdout(report, config.oracle_address)
+        await publish_to_stdout(report, config.oracle_address, supported_assets)
         return
 
     if config.is_broadcast:
         try:
-            transaction = await build_transaction(config, report)
+            transaction = await build_transaction(config, report, supported_assets)
             safe_url = await send_to_safe(config, transaction)
             logger.info("\nTransaction proposed to Safe")
             logger.info(f"Approve here: {safe_url}")

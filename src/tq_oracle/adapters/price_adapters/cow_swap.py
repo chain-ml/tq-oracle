@@ -147,7 +147,6 @@ class CowSwapAdapter(BasePriceAdapter):
             try:
                 token_decimals = await self.get_token_decimals(asset_address)
                 native_price = await self.fetch_native_price(asset_address)
-
                 price_wei = int(Decimal(native_price) * 10**18)
                 price_wei_normalized = price_wei // (10 ** (18 - token_decimals))
                 logger.debug(

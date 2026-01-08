@@ -45,6 +45,7 @@ class IdleBalancesAdapterSettings(BaseModel):
 
     extra_tokens: dict[str, str] = Field(default_factory=dict)
     extra_addresses: list[str] = Field(default_factory=list)
+    non_tvl_tokens: dict[str, str] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -165,6 +166,10 @@ class OracleSettings(BaseSettings):
     coingecko_token_ids: dict[str, str] = Field(
         default_factory=dict
     )  # token_address -> coingecko_id mapping
+
+    # Manual price overrides (highest priority - overrides all price adapters)
+    # Format: { "token_address": price_in_wei_18_decimals }
+    manual_prices: dict[str, int] = Field(default_factory=dict)
 
     # --- RPC settings ---
     max_calls: int = 3

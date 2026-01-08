@@ -44,6 +44,15 @@ async def publish_report(ctx: PipelineContext) -> None:
     report = ctx.report_required
     log = ctx.state.logger
 
+    # Log final report summary
+    tvl_eth = report.tvl_in_base_asset / 10**18
+
+    log.info("=" * 60)
+    log.info("Final Report Summary:")
+    log.info(f"  TVL (Total Value Locked): {tvl_eth:,.6f} ETH")
+    log.info(f"  Assets Reported: {len(report.final_prices)}")
+    log.info("=" * 60)
+
     log.info("Publishing report (dry_run=%s)...", s.dry_run)
 
-    await publish_report_impl(s, report)
+    await publish_report_impl(s, report, ctx.supported_assets)

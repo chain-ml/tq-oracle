@@ -246,36 +246,18 @@ class CoinGeckoAdapter(BasePriceAdapter):
                 price_in_eth = cg_prices[cg_id]
 
                 # Convert to 18-decimal integer
-                # CoinGecko returns price per 1 whole token
-                # e.g., for USDC: 0.000333 ETH per 1 USDC
+                # CoinGecko returns price per 1 whole token in ETH
+                # e.g., for USDC: 0.000333 ETH per 1 USDC -> 333000000000000 wei
+                # This format works directly with calculate_total_assets: amount * price // 10^18
                 price_wei = int(price_in_eth * (10**18))
 
-                # Normalize for token decimals (same as CowSwap adapter)
-                # Get token decimals
-                from web3 import Web3
-                from ...abi import load_erc20_abi
-
-                w3 = Web3(Web3.HTTPProvider(self.config.vault_rpc_required))
-                token_contract = w3.eth.contract(
-                    address=Web3.to_checksum_address(asset_address),
-                    abi=load_erc20_abi(),
-                )
-                token_decimals = await asyncio.to_thread(
-                    token_contract.functions.decimals().call,
-                    block_identifier=self.config.block_number_required,
-                )
-
-                # Normalize price
-                price_normalized = price_wei // (10 ** (18 - token_decimals))
-
-                prices_accumulator.prices[asset_address] = price_normalized
+                prices_accumulator.prices[asset_address] = price_wei
                 priced_count += 1
 
                 logger.info(
-                    "CoinGecko priced %s: %d wei (decimals=%d, id=%s)",
+                    "CoinGecko priced %s: %d wei (id=%s)",
                     asset_address,
-                    price_normalized,
-                    token_decimals,
+                    price_wei,
                     cg_id,
                 )
 

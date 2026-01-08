@@ -10,6 +10,7 @@ from ..adapters.asset_adapters.idle_balances import IdleBalancesAdapter
 from ..adapters.asset_adapters.stakewise import StakeWiseAdapter
 from ..adapters.asset_adapters.streth import StrETHAdapter
 from ..processors import compute_total_aggregated_assets
+from ..report.subvault_breakdown import log_subvault_breakdown
 from .context import PipelineContext
 
 
@@ -281,10 +282,89 @@ async def collect_assets(ctx: PipelineContext) -> None:
 
     asset_data: list[list[AssetData]] = []
     _process_adapter_results(asset_fetch_tasks, default_results, asset_data, log)
+
+    # Track which assets came from which subvault
+    # Fetch per-subvault assets directly for breakdown
+    subvault_asset_map: dict[str, list[AssetData]] = {}
+
+    log.info("Fetching per-subvault assets for breakdown...")
+    for subvault_addr in subvault_addresses:
+        subvault_assets: list[AssetData] = []
+        log.debug(f"Processing subvault: {subvault_addr}")
+
+        # Idle balances
+        if should_run_default_idle_balances and not get_subvault_config(subvault_addr).get("skip_idle_balances", False):
+            try:
+                idle_assets = await idle_vault_adapter.fetch_assets(subvault_addr)
+                if idle_assets:
+                    log.info(f"  idle_balances returned {len(idle_assets)} assets for {subvault_addr}")
+                    for asset in idle_assets:
+                        log.debug(f"    - {asset.asset_address}: {asset.amount}")
+                else:
+                    log.debug(f"  idle_balances returned 0 assets for {subvault_addr}")
+                subvault_assets.extend(idle_assets)
+            except Exception as e:
+                log.debug(f"  idle_balances failed for {subvault_addr}: {e}")
+
+        # StakeWise
+        if stakewise_config.stakewise_vault_addresses:
+            try:
+                stakewise_assets = await stakewise_adapter.fetch_assets(subvault_addr)
+                if stakewise_assets:
+                    log.info(f"  stakewise returned {len(stakewise_assets)} assets for {subvault_addr}")
+                    for asset in stakewise_assets:
+                        log.debug(f"    - {asset.asset_address}: {asset.amount}")
+                else:
+                    log.debug(f"  stakewise returned 0 assets for {subvault_addr}")
+                subvault_assets.extend(stakewise_assets)
+            except Exception as e:
+                log.debug(f"  stakewise failed for {subvault_addr}: {e}")
+
+        # strETH
+        if should_run_streth and not get_subvault_config(subvault_addr).get("skip_streth", False):
+            try:
+                streth_assets = await streth_adapter.fetch_assets(subvault_addr)
+                if streth_assets:
+                    log.info(f"  streth returned {len(streth_assets)} assets for {subvault_addr}")
+                    for asset in streth_assets:
+                        log.debug(f"    - {asset.asset_address}: {asset.amount}")
+                else:
+                    log.debug(f"  streth returned 0 assets for {subvault_addr}")
+                subvault_assets.extend(streth_assets)
+            except Exception as e:
+                log.debug(f"  streth failed for {subvault_addr}: {e}")
+
+        subvault_asset_map[subvault_addr.lower()] = subvault_assets
+
+    per_subvault_start_idx = len(asset_data)
     _process_adapter_results(adapter_tasks, per_subvault_results, asset_data, log)
+
+    # Add per-subvault adapter results to the map
+    for i, (subvault_addr, _, adapter_name) in enumerate(adapter_tasks):
+        result_idx = per_subvault_start_idx + i
+        if result_idx < len(asset_data):
+            # Extend existing list if subvault already has assets
+            per_subvault_assets = asset_data[result_idx]
+            if per_subvault_assets:
+                log.info(f"  {adapter_name} returned {len(per_subvault_assets)} assets for {subvault_addr}")
+                for asset in per_subvault_assets:
+                    log.debug(f"    - {asset.asset_address}: {asset.amount}")
+            else:
+                log.debug(f"  {adapter_name} returned 0 assets for {subvault_addr}")
+
+            existing = subvault_asset_map.get(subvault_addr.lower(), [])
+            existing.extend(per_subvault_assets)
+            subvault_asset_map[subvault_addr.lower()] = existing
 
     log.info("Computing aggregated assets...")
     aggregated = await compute_total_aggregated_assets(asset_data)
     log.debug("Total aggregated assets: %d", len(aggregated.assets))
 
+    # Flatten asset_data for per-subvault breakdown later
+    raw_assets = [asset for assets_list in asset_data for asset in assets_list]
+
     ctx.aggregated = aggregated
+    ctx.raw_assets = raw_assets
+
+    # Store subvault mapping in context for later use
+    ctx.subvault_asset_map = subvault_asset_map

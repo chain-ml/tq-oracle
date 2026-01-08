@@ -59,6 +59,9 @@ class IdleBalancesAdapter(BaseAssetAdapter):
         extra_additional_raw = (
             idle_cfg.extra_tokens if config.additional_asset_support else {}
         )
+        non_tvl_raw = (
+            idle_cfg.non_tvl_tokens if config.additional_asset_support else {}
+        )
 
         self._default_additional_assets: list[str] = [
             self.w3.to_checksum_address(address)
@@ -73,11 +76,20 @@ class IdleBalancesAdapter(BaseAssetAdapter):
         self._extra_additional_assets: list[str] = list(
             self._extra_additional_assets_by_symbol.values()
         )
+        self._non_tvl_assets_by_symbol: dict[str, str] = {
+            symbol: self.w3.to_checksum_address(address)
+            for symbol, address in non_tvl_raw.items()
+            if address
+        }
+        self._non_tvl_assets: list[str] = list(
+            self._non_tvl_assets_by_symbol.values()
+        )
         self._additional_assets: list[str] = [
             *self._default_additional_assets,
             *self._extra_additional_assets,
         ]
         # Additional tokens (defaults + extras) are marked tvl_only to avoid conflicts with other adapters
+        # non_tvl_tokens are NOT marked as tvl_only
         self._additional_asset_lookup: set[str] = {
             addr.lower() for addr in self._additional_assets
         }
@@ -86,6 +98,11 @@ class IdleBalancesAdapter(BaseAssetAdapter):
                 "Idle balances additional tokens configured: defaults=%s extra=%s",
                 self._default_additional_assets,
                 self._extra_additional_assets_by_symbol,
+            )
+        if self._non_tvl_assets:
+            logger.debug(
+                "Idle balances non-tvl tokens configured: %s",
+                self._non_tvl_assets_by_symbol,
             )
 
         extra_address_candidates = (
@@ -334,6 +351,11 @@ class IdleBalancesAdapter(BaseAssetAdapter):
             for addr in self._extra_additional_assets
             if isinstance(addr, str) and addr.lower() not in base_lookup
         ]
+        effective_non_tvl = [
+            addr
+            for addr in self._non_tvl_assets
+            if isinstance(addr, str) and addr.lower() not in base_lookup
+        ]
         effective_additional = [*effective_defaults, *effective_extras]
         self._additional_asset_lookup = {addr.lower() for addr in effective_additional}
 
@@ -353,11 +375,24 @@ class IdleBalancesAdapter(BaseAssetAdapter):
             seen.add(normalized)
             combined.append(address)
 
+        for address in effective_non_tvl:
+            normalized = address.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            combined.append(address)
+
         if effective_additional:
             logger.debug(
                 "Idle balances applying additional tokens (tvl_only): extras=%s defaults=%s",
                 [addr for addr in effective_extras],
                 [addr for addr in effective_defaults],
+            )
+
+        if effective_non_tvl:
+            logger.debug(
+                "Idle balances applying non-tvl tokens: %s",
+                [addr for addr in effective_non_tvl],
             )
 
         return combined

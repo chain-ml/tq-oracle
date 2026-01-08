@@ -51,6 +51,8 @@ class AaveV3Adapter(BaseAssetAdapter):
         """
         super().__init__(config)
 
+        logger.info("Initializing Aave V3 adapter...")
+
         # Skip adapter if not on mainnet (for now)
         self._skip = config.network != Network.MAINNET
         if self._skip:
@@ -60,49 +62,76 @@ class AaveV3Adapter(BaseAssetAdapter):
             )
             return
 
-        # Initialize Web3 connection
-        self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
-        if not self.w3.is_connected():
-            raise ConnectionError("Failed to connect to RPC for Aave V3 adapter")
+        logger.debug("Network check passed, initializing Web3...")
 
-        self.block_number = config.block_number_required
+        # Initialize Web3 connection
+        logger.debug("RPC URL: %s", config.vault_rpc_required)
+        try:
+            self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
+            logger.debug("Web3 provider created, checking connection...")
+            if not self.w3.is_connected():
+                raise ConnectionError("Failed to connect to RPC for Aave V3 adapter")
+            logger.debug("Web3 connection verified")
+        except Exception as e:
+            logger.error(
+                "Failed to initialize Web3: %s (type: %s)",
+                str(e),
+                type(e).__name__,
+                exc_info=True,
+            )
+            raise
+
+        logger.debug("Web3 connected, block_number=%s", config.block_number)
+        self.block_number = config.block_number or "latest"
+        logger.debug("Using block_number: %s", self.block_number)
 
         # RPC throttling configuration
         self._rpc_sem = asyncio.Semaphore(config.rpc_max_concurrent_calls)
         self._rpc_delay = config.rpc_delay
         self._rpc_jitter = config.rpc_jitter
+        logger.debug("RPC throttling configured: max_concurrent=%d, delay=%s, jitter=%s",
+                     config.rpc_max_concurrent_calls, self._rpc_delay, self._rpc_jitter)
 
         # Load adapter configuration with overrides
+        logger.debug("Loading adapter configuration (overrides: %s)", bool(overrides))
         adapter_config = config.adapters.aave_v3
 
         # Pool address
         self.pool_address = overrides.get(
             "pool_address", adapter_config.pool_address or AAVE_V3_POOL_MAINNET
         )
+        logger.debug("Pool address: %s", self.pool_address)
 
         # Supply tokens (aTokens)
         if "supply_tokens" in overrides:
             self.supply_tokens = overrides["supply_tokens"]
+            logger.debug("Using override supply_tokens: %s", self.supply_tokens)
         elif adapter_config.supply_tokens:
             self.supply_tokens = adapter_config.supply_tokens
+            logger.debug("Using config supply_tokens: %s", self.supply_tokens)
         else:
             self.supply_tokens = AAVE_V3_SUPPLY_TOKENS_MAINNET
+            logger.debug("Using default supply_tokens: %s", self.supply_tokens)
 
         # Borrow tokens (variable debt)
         if "borrow_tokens" in overrides:
             self.borrow_tokens = overrides["borrow_tokens"]
+            logger.debug("Using override borrow_tokens: %s", self.borrow_tokens)
         elif adapter_config.borrow_tokens:
             self.borrow_tokens = adapter_config.borrow_tokens
+            logger.debug("Using config borrow_tokens: %s", self.borrow_tokens)
         else:
             self.borrow_tokens = AAVE_V3_BORROW_TOKENS_MAINNET
+            logger.debug("Using default borrow_tokens: %s", self.borrow_tokens)
 
         # Base asset type
         self.base_asset_type = overrides.get(
             "base_asset_type", adapter_config.base_asset_type
         )
+        logger.debug("Base asset type: %s", self.base_asset_type)
 
-        logger.debug(
-            "Aave V3 adapter initialized: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s",
+        logger.info(
+            "Aave V3 adapter initialization complete: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s",
             self.pool_address,
             len(self.supply_tokens),
             len(self.borrow_tokens),
@@ -140,14 +169,69 @@ class AaveV3Adapter(BaseAssetAdapter):
         Returns:
             Balance in native token units
         """
-        contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(token),
-            abi=load_erc20_abi(),
-        )
-        return await self._rpc(
-            contract.functions.balanceOf(Web3.to_checksum_address(owner)).call,
-            block_identifier=self.block_number,
-        )
+        try:
+            logger.debug("Querying balance: token=%s, owner=%s", token, owner)
+            contract = self.w3.eth.contract(
+                address=Web3.to_checksum_address(token),
+                abi=load_erc20_abi(),
+            )
+            balance = await self._rpc(
+                contract.functions.balanceOf(Web3.to_checksum_address(owner)).call,
+                block_identifier=self.block_number,
+            )
+            logger.debug("Balance query successful: %d", balance)
+            return balance
+        except Exception as e:
+            logger.error(
+                "Failed to query balance for token=%s, owner=%s: %s (type: %s)",
+                token,
+                owner,
+                str(e),
+                type(e).__name__,
+                exc_info=True,
+            )
+            raise
+
+    async def _get_underlying_asset(self, atoken_or_debt_token: str) -> str:
+        """Get the underlying asset address from an aToken or debt token.
+
+        Args:
+            atoken_or_debt_token: aToken or variable debt token address
+
+        Returns:
+            Underlying asset address (e.g., WETH, USDC)
+        """
+        try:
+            logger.debug("Querying underlying asset for token: %s", atoken_or_debt_token)
+            # Aave V3 aTokens and debt tokens have UNDERLYING_ASSET_ADDRESS() function
+            abi = [
+                {
+                    "inputs": [],
+                    "name": "UNDERLYING_ASSET_ADDRESS",
+                    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+                    "stateMutability": "view",
+                    "type": "function",
+                }
+            ]
+            contract = self.w3.eth.contract(
+                address=Web3.to_checksum_address(atoken_or_debt_token),
+                abi=abi,
+            )
+            underlying = await self._rpc(
+                contract.functions.UNDERLYING_ASSET_ADDRESS().call,
+                block_identifier=self.block_number,
+            )
+            logger.debug("Underlying asset query successful: %s", underlying)
+            return underlying
+        except Exception as e:
+            logger.error(
+                "Failed to query underlying asset for token=%s: %s (type: %s)",
+                atoken_or_debt_token,
+                str(e),
+                type(e).__name__,
+                exc_info=True,
+            )
+            raise
 
     async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
         """Fetch Aave V3 positions for a specific subvault.
@@ -163,64 +247,101 @@ class AaveV3Adapter(BaseAssetAdapter):
         Returns:
             List of AssetData with positive amounts for supply and negative for borrows
         """
+        logger.info("Aave V3 fetch_assets called for subvault %s", subvault_address)
+
         if self._skip:
+            logger.debug("Adapter is skipped, returning empty list")
             return []
 
+        logger.debug("Starting to fetch Aave V3 positions...")
         results: list[AssetData] = []
 
-        # Fetch supply positions (aTokens)
-        supply_tasks = []
-        for symbol, token_address in self.supply_tokens.items():
-            supply_tasks.append(
-                (
-                    symbol,
-                    token_address,
-                    self._balance_of(token_address, subvault_address),
-                )
-            )
+        # Fetch supply positions (aTokens) in parallel - both balances and underlying assets
+        supply_token_addresses = list(self.supply_tokens.values())
 
-        for symbol, token_address, balance_coro in supply_tasks:
-            balance = await balance_coro
+        logger.debug(
+            "Fetching supply positions for %d tokens: %s",
+            len(supply_token_addresses),
+            supply_token_addresses,
+        )
+
+        try:
+            supply_balances, supply_underlyings = await asyncio.gather(
+                asyncio.gather(
+                    *[
+                        self._balance_of(token_address, subvault_address)
+                        for token_address in supply_token_addresses
+                    ]
+                ),
+                asyncio.gather(
+                    *[
+                        self._get_underlying_asset(token_address)
+                        for token_address in supply_token_addresses
+                    ]
+                ),
+            )
+            logger.debug("Successfully fetched %d supply balances and underlyings", len(supply_balances))
+        except Exception as e:
+            logger.error(
+                "Failed to fetch supply positions: %s (type: %s)",
+                str(e),
+                type(e).__name__,
+                exc_info=True,
+            )
+            raise
+
+        for (symbol, token_address), balance, underlying_address in zip(
+            self.supply_tokens.items(), supply_balances, supply_underlyings
+        ):
             if balance > 0:
                 results.append(
                     AssetData(
-                        asset_address=Web3.to_checksum_address(token_address),
+                        asset_address=Web3.to_checksum_address(underlying_address),
                         amount=balance,
                     )
                 )
                 logger.debug(
-                    "Aave V3: %s supply balance for %s: %d",
+                    "Aave V3: %s supply balance for %s: %d (underlying: %s)",
                     symbol,
                     subvault_address,
                     balance,
+                    underlying_address,
                 )
 
-        # Fetch borrow positions (variable debt tokens)
-        borrow_tasks = []
-        for symbol, token_address in self.borrow_tokens.items():
-            borrow_tasks.append(
-                (
-                    symbol,
-                    token_address,
-                    self._balance_of(token_address, subvault_address),
-                )
-            )
+        # Fetch borrow positions (variable debt tokens) in parallel - both balances and underlying assets
+        borrow_token_addresses = list(self.borrow_tokens.values())
+        borrow_balances, borrow_underlyings = await asyncio.gather(
+            asyncio.gather(
+                *[
+                    self._balance_of(token_address, subvault_address)
+                    for token_address in borrow_token_addresses
+                ]
+            ),
+            asyncio.gather(
+                *[
+                    self._get_underlying_asset(token_address)
+                    for token_address in borrow_token_addresses
+                ]
+            ),
+        )
 
-        for symbol, token_address, balance_coro in borrow_tasks:
-            balance = await balance_coro
+        for (symbol, token_address), balance, underlying_address in zip(
+            self.borrow_tokens.items(), borrow_balances, borrow_underlyings
+        ):
             if balance > 0:
                 # Borrows are represented as NEGATIVE amounts
                 results.append(
                     AssetData(
-                        asset_address=Web3.to_checksum_address(token_address),
+                        asset_address=Web3.to_checksum_address(underlying_address),
                         amount=-balance,
                     )
                 )
                 logger.debug(
-                    "Aave V3: %s borrow balance for %s: %d (stored as negative)",
+                    "Aave V3: %s borrow balance for %s: %d (stored as negative, underlying: %s)",
                     symbol,
                     subvault_address,
                     balance,
+                    underlying_address,
                 )
 
         logger.info(

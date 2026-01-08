@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
+from ..abi import fetch_subvault_addresses
 from ..adapters import PRICE_ADAPTERS
 from ..adapters.price_adapters.base import PriceData
 from ..checks.price_validators import PriceValidationError, run_price_validations
@@ -9,6 +12,7 @@ from ..processors import (
     calculate_total_assets,
     derive_final_prices,
 )
+from ..report.subvault_breakdown import log_subvault_breakdown
 from .context import PipelineContext
 
 
@@ -62,3 +66,13 @@ async def price_assets(ctx: PipelineContext) -> None:
     ctx.price_data = price_data
     ctx.total_assets = total_assets
     ctx.final_prices = final_prices
+
+    # Log per-subvault breakdown
+    if ctx.subvault_asset_map:
+        log.info("Per-subvault asset breakdown:")
+        subvault_addresses = await fetch_subvault_addresses(s)
+
+        # Log each subvault's breakdown
+        for subvault_addr in subvault_addresses:
+            assets_for_subvault = ctx.subvault_asset_map.get(subvault_addr.lower(), [])
+            await log_subvault_breakdown(subvault_addr, assets_for_subvault, price_data, s)
