@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class CowSwapAdapter(BasePriceAdapter):
-    """Adapter for querying CoW Protocol native prices.
+    """Adapter for querying CoW Protocol prices via the quote API.
 
     This adapter fetches prices for all assets EXCEPT those handled by specialized adapters.
     Assets on the list (ETH, WETH) are skipped as they're handled by ETHAdapter.
@@ -41,6 +41,11 @@ class CowSwapAdapter(BasePriceAdapter):
             raise ValueError("ETH address is required for CowSwap adapter")
         self.eth_address = eth_address
         self._oseth_address = assets.get("OSETH")
+
+        weth_address = assets.get("WETH")
+        if weth_address is None:
+            raise ValueError("WETH address is required for CowSwap adapter")
+        self.weth_address = weth_address
 
         self._decimals_cache: dict[str, int] = {}
 
@@ -100,20 +105,39 @@ class CowSwapAdapter(BasePriceAdapter):
         jitter=backoff.full_jitter,
     )
     async def fetch_native_price(self, token_address: str) -> str:
-        """Fetch native price (ETH) for a token from CoW Protocol API.
+        """Fetch price (in ETH) for 1e18 units of a token using CoW Protocol quote API.
 
         Args:
             token_address: The token contract address
 
         Returns:
-            Native price in ETH as a string to avoid float precision loss
+            Price in ETH for 1e18 units of the token as a string
         """
-        url = f"{self.api_base_url}/token/{token_address}/native_price"
-        logger.debug(f"Calling {url}")
-        response = await asyncio.to_thread(requests.get, url, timeout=10.0)
+        url = f"{self.api_base_url}/quote"
+        sell_amount = 10**18
+
+        data = {
+            "sellToken": Web3.to_checksum_address(token_address),
+            "buyToken": Web3.to_checksum_address(self.weth_address),
+            "sellAmountBeforeFee": str(sell_amount),
+            "from": Web3.to_checksum_address(self.weth_address),  # dummy address for quote
+            "kind": "sell",
+            "priceQuality": "optimal",
+        }
+
+        logger.debug(f"Calling {url} for {token_address}")
+        response = await asyncio.to_thread(
+            lambda: requests.post(url, json=data, timeout=10.0)
+        )
         response.raise_for_status()
-        data = response.json()
-        return str(data["price"])
+        result = response.json()
+
+        quote = result.get("quote", {})
+        buy_amount_wei = int(quote.get("buyAmount", "0"))
+        # Scale down to ETH (same format as old native_price endpoint)
+        price_eth = Decimal(buy_amount_wei) / Decimal(10**18)
+        logger.debug(f"Quote for {token_address}: {price_eth} ETH for 1e18 units")
+        return str(price_eth)
 
     async def fetch_prices(
         self, asset_addresses: list[str], prices_accumulator: PriceData
@@ -131,10 +155,9 @@ class CowSwapAdapter(BasePriceAdapter):
 
         Notes:
             - Only ETH as base asset is supported.
-            - Fetches native prices directly from CoW Swap API.
+            - Uses CoW Protocol quote API to get prices (sells 1e18 units for WETH).
             - Processes all assets EXCEPT those on the skipped_assets (ETH, WETH).
             - Token decimals are fetched dynamically from on-chain and cached.
-            - CoW API returns price per 1 whole token in ETH.
         """
         if prices_accumulator.base_asset != self.eth_address:
             raise ValueError("CowSwap adapter only supports ETH as base asset")
