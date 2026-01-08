@@ -212,7 +212,7 @@ async def publish_report(
     - If not dry_run and Broadcast mode: build transaction, send to Safe
     """
     if config.dry_run:
-        indent = getattr(config, 'dry_run_report_indent', True)
+        indent = getattr(config, "dry_run_report_indent", True)
         await publish_to_stdout(report, config.oracle_address, supported_assets, indent)
         return
 

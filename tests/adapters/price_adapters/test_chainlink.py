@@ -214,7 +214,9 @@ class TestFetchPrices:
     """Tests for fetch_prices method."""
 
     @pytest.mark.asyncio
-    async def test_skipped_adapter_returns_unchanged(self, config_disabled, eth_address):
+    async def test_skipped_adapter_returns_unchanged(
+        self, config_disabled, eth_address
+    ):
         """Disabled adapter should return accumulator unchanged."""
         adapter = ChainlinkAdapter(config_disabled)
         accumulator = PriceData(base_asset=eth_address, prices={"0x111": 100})
@@ -259,9 +261,7 @@ class TestFetchPrices:
         assert result.decimals[usdc_address] == 6
 
     @pytest.mark.asyncio
-    async def test_skips_non_configured_stablecoins(
-        self, mocker, config, eth_address
-    ):
+    async def test_skips_non_configured_stablecoins(self, mocker, config, eth_address):
         """Assets not in chainlink_stablecoins should not be priced."""
         adapter = ChainlinkAdapter(config)
 
@@ -328,9 +328,7 @@ class TestFetchPrices:
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
 
         accumulator = PriceData(base_asset=eth_address, prices={})
-        result = await adapter.fetch_prices(
-            [usdc_address, usdt_address], accumulator
-        )
+        result = await adapter.fetch_prices([usdc_address, usdt_address], accumulator)
 
         # Both should have the same price
         assert result.prices[usdc_address] == result.prices[usdt_address]
@@ -367,7 +365,11 @@ class TestGetEthUsdPrice:
         # Mock contract calls
         mock_contract = MagicMock()
         mock_contract.functions.latestRoundData.return_value.call.return_value = (
-            1, -100, 0, 1234567890, 1  # Negative answer
+            1,
+            -100,
+            0,
+            1234567890,
+            1,  # Negative answer
         )
         mock_contract.functions.decimals.return_value.call.return_value = 8
 
@@ -383,7 +385,11 @@ class TestGetEthUsdPrice:
 
         mock_contract = MagicMock()
         mock_contract.functions.latestRoundData.return_value.call.return_value = (
-            1, 0, 0, 1234567890, 1  # Zero answer
+            1,
+            0,
+            0,
+            1234567890,
+            1,  # Zero answer
         )
         mock_contract.functions.decimals.return_value.call.return_value = 8
 

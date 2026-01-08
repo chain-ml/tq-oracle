@@ -276,7 +276,9 @@ async def test_publish_report_routes_to_broadcast_flow(
 
     await publish_report(broadcast_config, sample_report)
 
-    mock_build_transaction.assert_awaited_once_with(broadcast_config, sample_report, None)
+    mock_build_transaction.assert_awaited_once_with(
+        broadcast_config, sample_report, None
+    )
     mock_send_to_safe.assert_awaited_once_with(broadcast_config, {"tx": "data"})
     assert "Transaction proposed to Safe" in caplog.text
     assert "Approve here: http://safe.url" in caplog.text

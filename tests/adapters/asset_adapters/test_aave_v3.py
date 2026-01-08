@@ -147,7 +147,9 @@ class TestFetchAssets:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_returns_asset_data_list(self, mocker, config, subvault_address, usdc_address):
+    async def test_returns_asset_data_list(
+        self, mocker, config, subvault_address, usdc_address
+    ):
         """Should return list of AssetData."""
         adapter = AaveV3Adapter(config)
 
@@ -161,13 +163,17 @@ class TestFetchAssets:
         assert all(isinstance(item, AssetData) for item in result)
 
     @pytest.mark.asyncio
-    async def test_supply_positions_are_positive(self, mocker, config, subvault_address, usdc_address):
+    async def test_supply_positions_are_positive(
+        self, mocker, config, subvault_address, usdc_address
+    ):
         """Supply (aToken) balances should be positive."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"USDC": "0xaUSDC"}
         adapter.borrow_tokens = {}
 
-        mocker.patch.object(adapter, "_balance_of", return_value=1000000000)  # 1000 USDC
+        mocker.patch.object(
+            adapter, "_balance_of", return_value=1000000000
+        )  # 1000 USDC
         mocker.patch.object(adapter, "_get_underlying_asset", return_value=usdc_address)
 
         result = await adapter.fetch_assets(subvault_address)
@@ -177,13 +183,17 @@ class TestFetchAssets:
         assert result[0].amount == 1000000000
 
     @pytest.mark.asyncio
-    async def test_borrow_positions_are_negative(self, mocker, config, subvault_address, usdc_address):
+    async def test_borrow_positions_are_negative(
+        self, mocker, config, subvault_address, usdc_address
+    ):
         """Borrow (debt token) balances should be negative."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {}
         adapter.borrow_tokens = {"USDC": "0xDebtUSDC"}
 
-        mocker.patch.object(adapter, "_balance_of", return_value=500000000)  # 500 USDC borrowed
+        mocker.patch.object(
+            adapter, "_balance_of", return_value=500000000
+        )  # 500 USDC borrowed
         mocker.patch.object(adapter, "_get_underlying_asset", return_value=usdc_address)
 
         result = await adapter.fetch_assets(subvault_address)
@@ -193,7 +203,9 @@ class TestFetchAssets:
         assert result[0].amount == -500000000
 
     @pytest.mark.asyncio
-    async def test_zero_balance_not_included(self, mocker, config, subvault_address, usdc_address):
+    async def test_zero_balance_not_included(
+        self, mocker, config, subvault_address, usdc_address
+    ):
         """Zero balance positions should not be in results."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"USDC": "0xaUSDC"}
@@ -207,7 +219,9 @@ class TestFetchAssets:
         assert len(result) == 0
 
     @pytest.mark.asyncio
-    async def test_returns_underlying_asset_address(self, mocker, config, subvault_address, usdc_address):
+    async def test_returns_underlying_asset_address(
+        self, mocker, config, subvault_address, usdc_address
+    ):
         """Should return underlying asset address, not aToken address."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"USDC": "0xaUSDC"}
@@ -269,7 +283,9 @@ class TestFetchAssets:
             return "0x0"
 
         mocker.patch.object(adapter, "_balance_of", side_effect=mock_balance)
-        mocker.patch.object(adapter, "_get_underlying_asset", side_effect=mock_underlying)
+        mocker.patch.object(
+            adapter, "_get_underlying_asset", side_effect=mock_underlying
+        )
 
         result = await adapter.fetch_assets(subvault_address)
 
@@ -286,7 +302,9 @@ class TestDecimalHandling:
     """Tests verifying decimal handling for different assets."""
 
     @pytest.mark.asyncio
-    async def test_usdc_6_decimals(self, mocker, config, subvault_address, usdc_address):
+    async def test_usdc_6_decimals(
+        self, mocker, config, subvault_address, usdc_address
+    ):
         """USDC has 6 decimals - verify raw balance handling."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"USDC": "0xaUSDC"}
@@ -305,7 +323,9 @@ class TestDecimalHandling:
         assert result[0].amount == 1000000000
 
     @pytest.mark.asyncio
-    async def test_usdt_6_decimals(self, mocker, config, subvault_address, usdt_address):
+    async def test_usdt_6_decimals(
+        self, mocker, config, subvault_address, usdt_address
+    ):
         """USDT has 6 decimals - verify raw balance handling."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"USDT": "0xaUSDT"}
@@ -323,7 +343,9 @@ class TestDecimalHandling:
         assert result[0].amount == 500000000
 
     @pytest.mark.asyncio
-    async def test_usde_18_decimals(self, mocker, config, subvault_address, usde_address):
+    async def test_usde_18_decimals(
+        self, mocker, config, subvault_address, usde_address
+    ):
         """USDe has 18 decimals - verify raw balance handling."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"USDe": "0xaUSDe"}
@@ -341,7 +363,9 @@ class TestDecimalHandling:
         assert result[0].amount == 100 * 10**18
 
     @pytest.mark.asyncio
-    async def test_weth_18_decimals(self, mocker, config, subvault_address, weth_address):
+    async def test_weth_18_decimals(
+        self, mocker, config, subvault_address, weth_address
+    ):
         """WETH has 18 decimals - verify raw balance handling."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"WETH": "0xaWETH"}
@@ -362,7 +386,9 @@ class TestNetValueCalculation:
     """Tests verifying net value when combining supply and borrow."""
 
     @pytest.mark.asyncio
-    async def test_net_position_same_asset(self, mocker, config, subvault_address, usdc_address):
+    async def test_net_position_same_asset(
+        self, mocker, config, subvault_address, usdc_address
+    ):
         """
         When supplying and borrowing same asset, amounts should net out.
 
@@ -412,7 +438,9 @@ class TestAddressChecksumming:
     """Tests for address handling."""
 
     @pytest.mark.asyncio
-    async def test_returns_checksummed_addresses(self, mocker, config, subvault_address):
+    async def test_returns_checksummed_addresses(
+        self, mocker, config, subvault_address
+    ):
         """Returned asset addresses should be checksummed."""
         adapter = AaveV3Adapter(config)
         adapter.supply_tokens = {"TEST": "0xTestToken"}
@@ -422,7 +450,9 @@ class TestAddressChecksumming:
         lowercase_addr = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 
         mocker.patch.object(adapter, "_balance_of", return_value=1000000)
-        mocker.patch.object(adapter, "_get_underlying_asset", return_value=lowercase_addr)
+        mocker.patch.object(
+            adapter, "_get_underlying_asset", return_value=lowercase_addr
+        )
 
         result = await adapter.fetch_assets(subvault_address)
 
@@ -437,7 +467,9 @@ class TestAaveV3Integration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_fetch_usdc_supply_balance(self, config, subvault_address, usdc_address):
+    async def test_fetch_usdc_supply_balance(
+        self, config, subvault_address, usdc_address
+    ):
         """Integration: Fetch aUSDC balance and verify it returns USDC underlying."""
         adapter = AaveV3Adapter(config)
 

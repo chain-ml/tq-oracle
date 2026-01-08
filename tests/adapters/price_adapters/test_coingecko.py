@@ -121,7 +121,10 @@ class TestCoinGeckoAdapterInit:
         )
         adapter = CoinGeckoAdapter(config)
         # Custom should override default
-        assert adapter.token_ids["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"] == "custom-usd-coin"
+        assert (
+            adapter.token_ids["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
+            == "custom-usd-coin"
+        )
 
     def test_no_tokens_sets_skip_flag(self):
         """Adapter should skip if no tokens configured and no defaults apply."""
@@ -153,9 +156,7 @@ class TestFetchPricesBatch:
         adapter = CoinGeckoAdapter(config)
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "usd-coin": {"eth": 0.000333}
-        }
+        mock_response.json.return_value = {"usd-coin": {"eth": 0.000333}}
         mock_response.raise_for_status = MagicMock()
 
         mocker.patch("requests.get", return_value=mock_response)
@@ -207,7 +208,9 @@ class TestFetchPricesBatch:
         assert "missing-token" not in result
 
     @pytest.mark.asyncio
-    async def test_includes_api_key_header_when_present(self, mocker, config_with_api_key):
+    async def test_includes_api_key_header_when_present(
+        self, mocker, config_with_api_key
+    ):
         """Should include API key in headers when configured."""
         adapter = CoinGeckoAdapter(config_with_api_key)
 
@@ -244,7 +247,9 @@ class TestFetchPrices:
     """Tests for fetch_prices method."""
 
     @pytest.mark.asyncio
-    async def test_skipped_adapter_returns_unchanged(self, config_disabled, eth_address):
+    async def test_skipped_adapter_returns_unchanged(
+        self, config_disabled, eth_address
+    ):
         """Disabled adapter should return accumulator unchanged."""
         adapter = CoinGeckoAdapter(config_disabled)
         accumulator = PriceData(base_asset=eth_address, prices={"0x111": 100})
@@ -266,13 +271,14 @@ class TestFetchPrices:
             )
 
     @pytest.mark.asyncio
-    async def test_prices_configured_tokens(self, mocker, config, eth_address, usdc_address):
+    async def test_prices_configured_tokens(
+        self, mocker, config, eth_address, usdc_address
+    ):
         """Should price tokens that have CoinGecko ID mappings."""
         adapter = CoinGeckoAdapter(config)
 
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": 0.000333}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": 0.000333}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
 
@@ -289,10 +295,7 @@ class TestFetchPrices:
         """Tokens without CoinGecko ID mappings should not be priced."""
         adapter = CoinGeckoAdapter(config)
 
-        mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={}
-        )
+        mocker.patch.object(adapter, "_fetch_prices_batch", return_value={})
 
         unmapped_token = "0xUnmappedToken"
         accumulator = PriceData(base_asset=eth_address, prices={})
@@ -301,13 +304,14 @@ class TestFetchPrices:
         assert unmapped_token not in result.prices
 
     @pytest.mark.asyncio
-    async def test_preserves_existing_prices(self, mocker, config, eth_address, usdc_address):
+    async def test_preserves_existing_prices(
+        self, mocker, config, eth_address, usdc_address
+    ):
         """Should preserve prices already in accumulator."""
         adapter = CoinGeckoAdapter(config)
 
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": 0.000333}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": 0.000333}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
 
@@ -324,8 +328,9 @@ class TestFetchPrices:
         adapter = CoinGeckoAdapter(config)
 
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            side_effect=requests.exceptions.RequestException("API error")
+            adapter,
+            "_fetch_prices_batch",
+            side_effect=requests.exceptions.RequestException("API error"),
         )
 
         usdc = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
@@ -341,8 +346,7 @@ class TestFetchPrices:
         adapter = CoinGeckoAdapter(config)
 
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": 0.000333}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": 0.000333}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
 
@@ -354,13 +358,14 @@ class TestFetchPrices:
         assert uppercase_usdc in result.prices
 
     @pytest.mark.asyncio
-    async def test_stores_token_decimals(self, mocker, config, eth_address, usdc_address):
+    async def test_stores_token_decimals(
+        self, mocker, config, eth_address, usdc_address
+    ):
         """Should store token decimals in result."""
         adapter = CoinGeckoAdapter(config)
 
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": 0.000333}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": 0.000333}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
 
@@ -396,8 +401,7 @@ class TestPriceConversion:
 
         # 0.000333 ETH per USDC
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": 0.000333}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": 0.000333}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
 
@@ -417,8 +421,7 @@ class TestPriceConversion:
         # Very precise price
         precise_price = 0.000333333333333333
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": precise_price}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": precise_price}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
 
@@ -445,8 +448,7 @@ class TestPriceConversion:
         price_float = float(price_str)
 
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": price_float}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": price_float}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=18)
 
@@ -495,6 +497,7 @@ class TestTokenDecimalsCache:
         adapter = CoinGeckoAdapter(config)
 
         call_count = 0
+
         def make_decimals_call(decimals_value):
             nonlocal call_count
             call_count += 1
@@ -523,8 +526,7 @@ class TestValidation:
         adapter = CoinGeckoAdapter(config)
 
         mocker.patch.object(
-            adapter, "_fetch_prices_batch",
-            return_value={"usd-coin": 0.000333}
+            adapter, "_fetch_prices_batch", return_value={"usd-coin": 0.000333}
         )
         mocker.patch.object(adapter, "get_token_decimals", return_value=6)
         mock_validate = mocker.patch.object(adapter, "validate_prices")
@@ -556,8 +558,7 @@ class TestRetryBehavior:
         mock_response_ok.raise_for_status = MagicMock()
 
         mock_get = mocker.patch(
-            "requests.get",
-            side_effect=[mock_response_429, mock_response_ok]
+            "requests.get", side_effect=[mock_response_429, mock_response_ok]
         )
 
         # The backoff decorator should handle retries

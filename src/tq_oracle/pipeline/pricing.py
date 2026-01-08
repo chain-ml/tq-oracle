@@ -74,4 +74,6 @@ async def price_assets(ctx: PipelineContext) -> None:
         # Log each subvault's breakdown
         for subvault_addr in subvault_addresses:
             assets_for_subvault = ctx.subvault_asset_map.get(subvault_addr.lower(), [])
-            await log_subvault_breakdown(subvault_addr, assets_for_subvault, price_data, s)
+            await log_subvault_breakdown(
+                subvault_addr, assets_for_subvault, price_data, s
+            )

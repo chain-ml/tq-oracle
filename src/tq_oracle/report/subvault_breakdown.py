@@ -134,7 +134,9 @@ async def log_subvault_breakdown(
         else:
             display_name = f"{asset_addr[:10]}..."
 
-        amount_decimal = total_amount / (10**decimals)  # Use correct decimals for display
+        amount_decimal = total_amount / (
+            10**decimals
+        )  # Use correct decimals for display
         eth_value_decimal = eth_value / 10**18
 
         # Show negative amounts differently

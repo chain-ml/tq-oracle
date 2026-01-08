@@ -134,9 +134,7 @@ def test_calculate_total_assets_invalid_prices_raises():
         },
     )
 
-    with pytest.raises(
-        ValueError, match=r"Invalid prices for assets:"
-    ):
+    with pytest.raises(ValueError, match=r"Invalid prices for assets:"):
         calculate_total_assets(aggregated, prices)
 
 
@@ -245,7 +243,9 @@ def test_calculate_total_assets_with_large_but_valid_numbers():
     large_price = 5 * 10**18
 
     aggregated = AggregatedAssets(assets={"0xA": large_amount})
-    prices = PriceData(base_asset="0xBASE", prices={"0xA": large_price}, decimals={"0xA": 18})
+    prices = PriceData(
+        base_asset="0xBASE", prices={"0xA": large_price}, decimals={"0xA": 18}
+    )
 
     # (large_amount * 5 * 10**18) // 10**18 = large_amount * 5, still < 2**256
     expected_result = large_amount * 5
