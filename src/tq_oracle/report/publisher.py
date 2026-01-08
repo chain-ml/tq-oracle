@@ -23,10 +23,17 @@ logger = logging.getLogger(__name__)
 
 async def publish_to_stdout(
 <<<<<<< HEAD
+<<<<<<< HEAD
     report: OracleReport, oracle_address: str, supported_assets: set[str] | None = None
 =======
     report: OracleReport, oracle_address: str, indent: bool
 >>>>>>> cb3753b (Feature dry run indent (#141))
+=======
+    report: OracleReport, oracle_address: str, indent: bool
+=======
+    report: OracleReport, oracle_address: str, supported_assets: set[str] | None = None
+>>>>>>> c88937a (feat: add coingecko, chainlink price adapters, add new logging and reporitng)
+>>>>>>> cce8f43 (feat: add coingecko, chainlink price adapters, add new logging and reporitng)
 ) -> None:
     """Publish report to stdout (dry run mode).
 
@@ -34,10 +41,17 @@ async def publish_to_stdout(
         report: The oracle report to publish
         oracle_address: The address of the oracle contract
 <<<<<<< HEAD
+<<<<<<< HEAD
         supported_assets: Set of supported asset addresses for filtering calldata
 =======
         indent: Whether or not to indent report output
 >>>>>>> cb3753b (Feature dry run indent (#141))
+=======
+        indent: Whether or not to indent report output
+=======
+        supported_assets: Set of supported asset addresses for filtering calldata
+>>>>>>> c88937a (feat: add coingecko, chainlink price adapters, add new logging and reporitng)
+>>>>>>> cce8f43 (feat: add coingecko, chainlink price adapters, add new logging and reporitng)
 
     This corresponds to the "Report published to stdout" step in the flowchart.
     """
@@ -217,12 +231,16 @@ async def publish_report(
     """
     if config.dry_run:
 <<<<<<< HEAD
+<<<<<<< HEAD
         await publish_to_stdout(report, config.oracle_address, supported_assets)
 =======
         await publish_to_stdout(
             report, config.oracle_address, config.dry_run_report_indent
         )
 >>>>>>> cb3753b (Feature dry run indent (#141))
+=======
+        await publish_to_stdout(report, config.oracle_address, supported_assets)
+>>>>>>> cce8f43 (feat: add coingecko, chainlink price adapters, add new logging and reporitng)
         return
 
     if config.is_broadcast:

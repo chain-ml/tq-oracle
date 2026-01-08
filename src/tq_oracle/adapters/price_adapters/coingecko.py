@@ -286,6 +286,7 @@ class CoinGeckoAdapter(BasePriceAdapter):
                 # Convert to 18-decimal integer
                 # CoinGecko returns price per 1 whole token in ETH
                 # e.g., for USDC: 0.000333 ETH per 1 USDC -> 333000000000000 wei
+<<<<<<< HEAD
                 # This format works directly with calculate_total_assets: amount * price // 10^token_decimals
                 price_wei = int(price_in_eth * (10**18))
 
@@ -299,6 +300,16 @@ class CoinGeckoAdapter(BasePriceAdapter):
 
                 logger.info(
                     "CoinGecko priced %s: %d wei (id=%s, decimals=%d)",
+=======
+                # This format works directly with calculate_total_assets: amount * price // 10^18
+                price_wei = int(price_in_eth * (10**18))
+
+                prices_accumulator.prices[asset_address] = price_wei
+                priced_count += 1
+
+                logger.info(
+                    "CoinGecko priced %s: %d wei (id=%s)",
+>>>>>>> cce8f43 (feat: add coingecko, chainlink price adapters, add new logging and reporitng)
                     asset_address,
                     price_wei,
                     cg_id,
