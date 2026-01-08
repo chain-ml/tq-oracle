@@ -91,13 +91,16 @@ class ETHAdapter(BasePriceAdapter):
 
         if self.eth_address.lower() in asset_addresses_lower:
             prices_accumulator.prices[self.eth_address] = 10**18
+            prices_accumulator.decimals[self.eth_address] = 18
 
         if self.weth_address and self.weth_address.lower() in asset_addresses_lower:
             prices_accumulator.prices[self.weth_address] = 10**18
+            prices_accumulator.decimals[self.weth_address] = 18
 
         if self._oseth_address and self._oseth_address.lower() in asset_addresses_lower:
             oseth_price = await self._get_oseth_price()
             prices_accumulator.prices[self._oseth_address] = oseth_price
+            prices_accumulator.decimals[self._oseth_address] = 18
             logger.debug("osETH price: %d wei per osETH", oseth_price)
 
         self.validate_prices(prices_accumulator)

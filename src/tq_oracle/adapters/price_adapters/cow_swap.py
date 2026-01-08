@@ -133,6 +133,7 @@ class CowSwapAdapter(BasePriceAdapter):
             - Only ETH as base asset is supported.
             - Fetches native prices directly from CoW Swap API.
             - Processes all assets EXCEPT those on the skipped_assets (ETH, WETH).
+            - Skips assets that already have prices from higher-priority adapters.
             - Token decimals are fetched dynamically from on-chain and cached.
             - CoW API returns price per 1 whole token in ETH.
         """
@@ -144,6 +145,13 @@ class CowSwapAdapter(BasePriceAdapter):
                 logger.debug(f" Skipping asset: {asset_address}")
                 continue
 
+            # Skip assets that already have prices from higher-priority adapters
+            if asset_address in prices_accumulator.prices:
+                logger.debug(
+                    f" Skipping {asset_address} - already priced by higher-priority adapter"
+                )
+                continue
+
             try:
                 token_decimals = await self.get_token_decimals(asset_address)
                 native_price = await self.fetch_native_price(asset_address)
@@ -153,6 +161,7 @@ class CowSwapAdapter(BasePriceAdapter):
                     f" Fetched price for {asset_address}: {price_wei_normalized} wei (decimals: {token_decimals})"
                 )
                 prices_accumulator.prices[asset_address] = price_wei_normalized
+                prices_accumulator.decimals[asset_address] = token_decimals
 
             except Exception as e:
                 logger.warning(f" Failed to fetch price for {asset_address}: {e}")

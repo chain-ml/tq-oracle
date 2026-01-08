@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING
 
 import backoff
 import requests
+from web3 import Web3
 
+from ...abi import load_erc20_abi
 from ...constants import (
     COINGECKO_API_BASE_URL,
     COINGECKO_DEFAULT_IDS,
@@ -102,6 +104,11 @@ class CoinGeckoAdapter(BasePriceAdapter):
             raise ValueError("ETH address is required for CoinGecko adapter")
         self.eth_address = eth_address
 
+        # Web3 setup for fetching token decimals
+        self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
+        self.block_number = config.block_number_required
+        self._decimals_cache: dict[str, int] = {}
+
         logger.info(
             "CoinGecko adapter initialized: tokens=%d, api=%s",
             len(self.token_ids),
@@ -112,6 +119,37 @@ class CoinGeckoAdapter(BasePriceAdapter):
     def adapter_name(self) -> str:
         """Return adapter identifier."""
         return "coingecko"
+
+    async def get_token_decimals(self, token_address: str) -> int:
+        """Fetch token decimals from on-chain contract, with caching.
+
+        Args:
+            token_address: The token contract address
+
+        Returns:
+            Number of decimals for the token
+        """
+        if token_address in self._decimals_cache:
+            return self._decimals_cache[token_address]
+
+        erc20_abi = load_erc20_abi()
+        token_contract = self.w3.eth.contract(
+            address=Web3.to_checksum_address(token_address),
+            abi=erc20_abi,
+        )
+
+        decimals = await asyncio.to_thread(
+            lambda: int(
+                token_contract.functions.decimals().call(
+                    block_identifier=self.block_number
+                )
+            )
+        )
+
+        self._decimals_cache[token_address] = decimals
+        logger.debug(f"Fetched decimals for {token_address}: {decimals}")
+
+        return decimals
 
     @backoff.on_exception(
         backoff.expo,
@@ -248,17 +286,23 @@ class CoinGeckoAdapter(BasePriceAdapter):
                 # Convert to 18-decimal integer
                 # CoinGecko returns price per 1 whole token in ETH
                 # e.g., for USDC: 0.000333 ETH per 1 USDC -> 333000000000000 wei
-                # This format works directly with calculate_total_assets: amount * price // 10^18
+                # This format works directly with calculate_total_assets: amount * price // 10^token_decimals
                 price_wei = int(price_in_eth * (10**18))
 
                 prices_accumulator.prices[asset_address] = price_wei
+
+                # Fetch and store token decimals
+                token_decimals = await self.get_token_decimals(asset_address)
+                prices_accumulator.decimals[asset_address] = token_decimals
+
                 priced_count += 1
 
                 logger.info(
-                    "CoinGecko priced %s: %d wei (id=%s)",
+                    "CoinGecko priced %s: %d wei (id=%s, decimals=%d)",
                     asset_address,
                     price_wei,
                     cg_id,
+                    token_decimals,
                 )
 
             except Exception as e:

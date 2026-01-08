@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from web3 import Web3
 
+from ...abi import load_erc20_abi
 from ...constants import CHAINLINK_FEEDS
 from .base import BasePriceAdapter, PriceData
 
@@ -84,6 +85,9 @@ class ChainlinkAdapter(BasePriceAdapter):
         self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
         self.block_number = config.block_number_required
 
+        # Decimals cache
+        self._decimals_cache: dict[str, int] = {}
+
         # Chainlink Aggregator ABI (minimal)
         self._feed_abi = [
             {
@@ -128,6 +132,37 @@ class ChainlinkAdapter(BasePriceAdapter):
     def adapter_name(self) -> str:
         """Return adapter identifier."""
         return "chainlink"
+
+    async def get_token_decimals(self, token_address: str) -> int:
+        """Fetch token decimals from on-chain contract, with caching.
+
+        Args:
+            token_address: The token contract address
+
+        Returns:
+            Number of decimals for the token
+        """
+        if token_address in self._decimals_cache:
+            return self._decimals_cache[token_address]
+
+        erc20_abi = load_erc20_abi()
+        token_contract = self.w3.eth.contract(
+            address=Web3.to_checksum_address(token_address),
+            abi=erc20_abi,
+        )
+
+        decimals = await asyncio.to_thread(
+            lambda: int(
+                token_contract.functions.decimals().call(
+                    block_identifier=self.block_number
+                )
+            )
+        )
+
+        self._decimals_cache[token_address] = decimals
+        logger.debug(f"Fetched decimals for {token_address}: {decimals}")
+
+        return decimals
 
     async def _get_eth_usd_price(self) -> tuple[int, int]:
         """Get ETH/USD price from Chainlink oracle.
@@ -245,68 +280,22 @@ class ChainlinkAdapter(BasePriceAdapter):
         for asset_address in asset_addresses:
             if asset_address.lower() in self.stablecoins:
                 # For stablecoins, we assume 1 token ≈ 1 USD
-                # So price = usd_in_eth adjusted for token decimals
+                # usd_in_eth represents: "ETH per 1 whole USD" in 18 decimals
+                # Store this directly without normalization to match Pyth's format
+                prices_accumulator.prices[asset_address] = usd_in_eth
 
-                # NOTE: Most stablecoins are 6 decimals (USDC, USDT) or 18 decimals (DAI)
-                # We need to adjust the price based on token decimals
-                # The price should represent: "how much ETH for 1 token unit"
+                # Fetch and store token decimals
+                token_decimals = await self.get_token_decimals(asset_address)
+                prices_accumulator.decimals[asset_address] = token_decimals
 
-                # For 6-decimal stablecoin (USDC):
-                #   1 USDC = 1e6 units
-                #   If 1 USD = X ETH, then 1e6 units = X ETH
-                #   So price per unit = X / 1e6 = X * 10^(18-6) / 10^18
+                priced_count += 1
 
-                # For 18-decimal stablecoin (DAI):
-                #   1 DAI = 1e18 units
-                #   If 1 USD = X ETH, then 1e18 units = X ETH
-                #   So price per unit = X (already correct)
-
-                # SIMPLIFIED: We'll fetch decimals and normalize
-                # But for now, let's assume the price represents "per whole token"
-                # and let the existing normalization in total_assets handle it
-
-                # Actually, looking at cow_swap.py, it normalizes as:
-                # price_wei_normalized = price_wei // (10 ** (18 - token_decimals))
-
-                # So if usd_in_eth is the price for 1 whole USD (18 decimals),
-                # and stablecoin is 6 decimals, we need:
-                # price_normalized = usd_in_eth // (10 ** (18 - 6)) = usd_in_eth // 10^12
-
-                # Let's fetch token decimals to be accurate
-                try:
-                    from ...abi import load_erc20_abi
-
-                    token_contract = self.w3.eth.contract(
-                        address=Web3.to_checksum_address(asset_address),
-                        abi=load_erc20_abi(),
-                    )
-                    token_decimals = await asyncio.to_thread(
-                        token_contract.functions.decimals().call,
-                        block_identifier=self.block_number,
-                    )
-
-                    # Normalize price for token decimals
-                    # usd_in_eth represents price for 1 whole USD (18 decimals)
-                    # For a token with X decimals, the price should be normalized
-                    price_normalized = usd_in_eth // (10 ** (18 - token_decimals))
-
-                    prices_accumulator.prices[asset_address] = price_normalized
-                    priced_count += 1
-
-                    logger.info(
-                        "Chainlink priced %s: %d wei (decimals=%d)",
-                        asset_address,
-                        price_normalized,
-                        token_decimals,
-                    )
-
-                except Exception as e:
-                    logger.warning(
-                        "Failed to price stablecoin %s via Chainlink: %s",
-                        asset_address,
-                        e,
-                    )
-                    continue
+                logger.info(
+                    "Chainlink priced %s: %d wei (decimals=%d)",
+                    asset_address,
+                    usd_in_eth,
+                    token_decimals,
+                )
 
         logger.info(
             "Chainlink adapter priced %d stablecoins (ETH/USD: %d)",
