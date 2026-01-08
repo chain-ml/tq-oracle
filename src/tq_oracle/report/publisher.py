@@ -22,14 +22,22 @@ logger = logging.getLogger(__name__)
 
 
 async def publish_to_stdout(
+<<<<<<< HEAD
     report: OracleReport, oracle_address: str, supported_assets: set[str] | None = None
+=======
+    report: OracleReport, oracle_address: str, indent: bool
+>>>>>>> cb3753b (Feature dry run indent (#141))
 ) -> None:
     """Publish report to stdout (dry run mode).
 
     Args:
         report: The oracle report to publish
         oracle_address: The address of the oracle contract
+<<<<<<< HEAD
         supported_assets: Set of supported asset addresses for filtering calldata
+=======
+        indent: Whether or not to indent report output
+>>>>>>> cb3753b (Feature dry run indent (#141))
 
     This corresponds to the "Report published to stdout" step in the flowchart.
     """
@@ -42,7 +50,7 @@ async def publish_to_stdout(
         "report": report.to_dict(),
         "encoded_calldata": encoded_calldata.hex(),
     }
-    print(json.dumps(data, indent=2))
+    print(json.dumps(data, indent=2 if indent else None))
 
 
 async def build_transaction(
@@ -208,7 +216,13 @@ async def publish_report(
     - If not dry_run and Broadcast mode: build transaction, send to Safe
     """
     if config.dry_run:
+<<<<<<< HEAD
         await publish_to_stdout(report, config.oracle_address, supported_assets)
+=======
+        await publish_to_stdout(
+            report, config.oracle_address, config.dry_run_report_indent
+        )
+>>>>>>> cb3753b (Feature dry run indent (#141))
         return
 
     if config.is_broadcast:
