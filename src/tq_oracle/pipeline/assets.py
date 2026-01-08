@@ -10,7 +10,6 @@ from ..adapters.asset_adapters.idle_balances import IdleBalancesAdapter
 from ..adapters.asset_adapters.stakewise import StakeWiseAdapter
 from ..adapters.asset_adapters.streth import StrETHAdapter
 from ..processors import compute_total_aggregated_assets
-from ..report.subvault_breakdown import log_subvault_breakdown
 from .context import PipelineContext
 
 

@@ -93,7 +93,7 @@ async def log_subvault_breakdown(
         # Get asset symbol if available
         symbol = None
         for key, addr in config.assets.items():
-            if addr and addr.lower() == asset_addr:
+            if isinstance(addr, str) and addr.lower() == asset_addr:
                 symbol = key
                 break
 

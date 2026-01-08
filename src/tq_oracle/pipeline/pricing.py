@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 
 from ..abi import fetch_subvault_addresses
 from ..adapters import PRICE_ADAPTERS

@@ -67,9 +67,7 @@ async def test_publish_to_stdout_prints_correct_json(
 
 @pytest.mark.asyncio
 @patch("tq_oracle.report.publisher.encode_submit_reports")
-@patch("tq_oracle.abi.get_oracle_address_from_vault")
 async def test_build_transaction_creates_valid_tx_dict(
-    mock_get_oracle: MagicMock,
     mock_encode_submit_reports: MagicMock,
     broadcast_config: OracleSettings,
     sample_report: OracleReport,
@@ -79,7 +77,7 @@ async def test_build_transaction_creates_valid_tx_dict(
     formats the result into the expected transaction dictionary.
     """
     expected_oracle_address = "0x2234567890123456789012345678901234567890"
-    mock_get_oracle.return_value = expected_oracle_address
+    broadcast_config._oracle_address = expected_oracle_address
 
     mock_encode_submit_reports.return_value = (
         expected_oracle_address,
@@ -91,6 +89,7 @@ async def test_build_transaction_creates_valid_tx_dict(
     mock_encode_submit_reports.assert_called_once_with(
         oracle_address=expected_oracle_address,
         report=sample_report,
+        supported_assets=None,
     )
     assert tx == {
         "to": expected_oracle_address,
@@ -249,7 +248,7 @@ async def test_publish_report_routes_to_stdout_on_dry_run(
     await publish_report(broadcast_config, sample_report)
 
     mock_publish_to_stdout.assert_awaited_once_with(
-        sample_report, expected_oracle_address, True
+        sample_report, expected_oracle_address, None
     )
     mock_send_to_safe.assert_not_awaited()
 
@@ -277,7 +276,7 @@ async def test_publish_report_routes_to_broadcast_flow(
 
     await publish_report(broadcast_config, sample_report)
 
-    mock_build_transaction.assert_awaited_once_with(broadcast_config, sample_report)
+    mock_build_transaction.assert_awaited_once_with(broadcast_config, sample_report, None)
     mock_send_to_safe.assert_awaited_once_with(broadcast_config, {"tx": "data"})
     assert "Transaction proposed to Safe" in caplog.text
     assert "Approve here: http://safe.url" in caplog.text
