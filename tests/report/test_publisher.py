@@ -248,7 +248,7 @@ async def test_publish_report_routes_to_stdout_on_dry_run(
     await publish_report(broadcast_config, sample_report)
 
     mock_publish_to_stdout.assert_awaited_once_with(
-        sample_report, expected_oracle_address, None
+        sample_report, expected_oracle_address, None, True
     )
     mock_send_to_safe.assert_not_awaited()
 
