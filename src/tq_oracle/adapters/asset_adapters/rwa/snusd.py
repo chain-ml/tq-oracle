@@ -20,7 +20,7 @@ import backoff
 from web3 import Web3
 from web3.exceptions import ProviderConnectionError
 
-from ....abi import load_erc20_abi
+from ....abi import load_erc20_abi, load_snusd_abi
 from ....logger import get_logger
 from ..base import AssetData, BaseAssetAdapter
 
@@ -69,38 +69,6 @@ class SNUSDAdapter(BaseAssetAdapter):
     nusd_token = "0x..."   # nUSD underlying token address
     cooldown_period = 864000  # 10 days in seconds (optional, for validation)
     """
-
-    # sNUSD ABI - convertToAssets + cooldowns
-    _SNUSD_ABI = [
-        {
-            "inputs": [{"internalType": "uint256", "name": "shares", "type": "uint256"}],
-            "name": "convertToAssets",
-            "outputs": [{"internalType": "uint256", "name": "assets", "type": "uint256"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        {
-            "inputs": [],
-            "name": "asset",
-            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        {
-            "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
-            "name": "cooldowns",
-            "outputs": [
-                {"internalType": "uint104", "name": "cooldownEnd", "type": "uint104"},
-                {
-                    "internalType": "uint256",
-                    "name": "underlyingAmount",
-                    "type": "uint256",
-                },
-            ],
-            "stateMutability": "view",
-            "type": "function",
-        },
-    ]
 
     def __init__(self, config: OracleSettings, **overrides):
         """Initialize sNUSD adapter.
@@ -214,7 +182,7 @@ class SNUSDAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=self.snusd_token,
-            abi=self._SNUSD_ABI,
+            abi=load_snusd_abi(),
         )
         assets = await self._rpc(
             contract.functions.convertToAssets(shares).call,
@@ -233,7 +201,7 @@ class SNUSDAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=self.snusd_token,
-            abi=self._SNUSD_ABI,
+            abi=load_snusd_abi(),
         )
         cooldown_end, underlying_amount = await self._rpc(
             contract.functions.cooldowns(Web3.to_checksum_address(account)).call,

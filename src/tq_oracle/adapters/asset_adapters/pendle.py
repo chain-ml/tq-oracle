@@ -14,7 +14,7 @@ import backoff
 from web3 import Web3
 from web3.exceptions import ProviderConnectionError
 
-from ...abi import load_erc20_abi
+from ...abi import load_erc20_abi, load_pendle_oracle_abi, load_pendle_market_abi
 from ...constants import PENDLE_ORACLE_MAINNET
 from ...logger import get_logger
 from ...settings import Network
@@ -99,70 +99,6 @@ class PendleAdapter(BaseAssetAdapter):
             len(self.markets),
         )
 
-        # Pendle oracle ABI - using convenience functions
-        # https://docs.pendle.finance/Developers/Contracts/PendleOracle
-        self._oracle_abi = [
-            {
-                "inputs": [
-                    {"internalType": "address", "name": "market", "type": "address"},
-                    {"internalType": "uint32", "name": "duration", "type": "uint32"},
-                ],
-                "name": "getPtToAssetRate",
-                "outputs": [
-                    {
-                        "internalType": "uint256",
-                        "name": "ptToAssetRate",
-                        "type": "uint256",
-                    }
-                ],
-                "stateMutability": "view",
-                "type": "function",
-            },
-            {
-                "inputs": [
-                    {"internalType": "address", "name": "market", "type": "address"},
-                    {"internalType": "uint32", "name": "duration", "type": "uint32"},
-                ],
-                "name": "getLpToAssetRate",
-                "outputs": [
-                    {
-                        "internalType": "uint256",
-                        "name": "lpToAssetRate",
-                        "type": "uint256",
-                    }
-                ],
-                "stateMutability": "view",
-                "type": "function",
-            },
-        ]
-
-        # Pendle market ABI for getting PT token address
-        self._market_abi = [
-            {
-                "inputs": [],
-                "name": "readTokens",
-                "outputs": [
-                    {
-                        "internalType": "contract IStandardizedYield",
-                        "name": "SY",
-                        "type": "address",
-                    },
-                    {
-                        "internalType": "contract IPPrincipalToken",
-                        "name": "PT",
-                        "type": "address",
-                    },
-                    {
-                        "internalType": "contract IPYieldToken",
-                        "name": "YT",
-                        "type": "address",
-                    },
-                ],
-                "stateMutability": "view",
-                "type": "function",
-            },
-        ]
-
     @property
     def adapter_name(self) -> str:
         """Return adapter identifier."""
@@ -214,7 +150,7 @@ class PendleAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(market_address),
-            abi=self._market_abi,
+            abi=load_pendle_market_abi(),
         )
         _, pt_address, _ = await self._rpc(
             contract.functions.readTokens().call,
@@ -241,7 +177,7 @@ class PendleAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(self.oracle_address),
-            abi=self._oracle_abi,
+            abi=load_pendle_oracle_abi(),
         )
         rate = await self._rpc(
             contract.functions.getPtToAssetRate(
@@ -271,7 +207,7 @@ class PendleAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(self.oracle_address),
-            abi=self._oracle_abi,
+            abi=load_pendle_oracle_abi(),
         )
         rate = await self._rpc(
             contract.functions.getLpToAssetRate(

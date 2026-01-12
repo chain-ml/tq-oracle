@@ -1,0 +1,28 @@
+{
+  "abi": [
+    {
+      "inputs": [{"internalType": "uint256", "name": "shares", "type": "uint256"}],
+      "name": "convertToAssets",
+      "outputs": [{"internalType": "uint256", "name": "assets", "type": "uint256"}],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "asset",
+      "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+      "name": "cooldowns",
+      "outputs": [
+        {"internalType": "uint104", "name": "cooldownEnd", "type": "uint104"},
+        {"internalType": "uint256", "name": "underlyingAmount", "type": "uint256"}
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

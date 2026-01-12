@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from web3 import Web3
 
+from ..abi import load_erc4626_abi
 from ..logger import get_logger
 
 if TYPE_CHECKING:
@@ -84,37 +85,9 @@ async def convert_shares_to_assets_erc4626(
     """
     w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
 
-    # ERC-4626 ABI for convertToAssets and asset
-    erc4626_abi = [
-        {
-            "inputs": [
-                {"internalType": "uint256", "name": "shares", "type": "uint256"}
-            ],
-            "name": "convertToAssets",
-            "outputs": [
-                {"internalType": "uint256", "name": "assets", "type": "uint256"}
-            ],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        {
-            "inputs": [],
-            "name": "asset",
-            "outputs": [
-                {
-                    "internalType": "address",
-                    "name": "assetTokenAddress",
-                    "type": "address",
-                }
-            ],
-            "stateMutability": "view",
-            "type": "function",
-        },
-    ]
-
     contract = w3.eth.contract(
         address=Web3.to_checksum_address(vault_address),
-        abi=erc4626_abi,
+        abi=load_erc4626_abi(),
     )
 
     # Get underlying asset address and convert shares to assets
