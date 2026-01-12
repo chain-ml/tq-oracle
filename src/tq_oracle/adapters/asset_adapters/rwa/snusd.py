@@ -97,19 +97,19 @@ class SNUSDAdapter(BaseAssetAdapter):
         # Load configuration
         adapter_config = config.adapters.snusd
 
-        self.snusd_token = overrides.get("snusd_token") or adapter_config.snusd_token
-        self.nusd_token = overrides.get("nusd_token") or adapter_config.nusd_token
+        snusd_token = overrides.get("snusd_token") or adapter_config.snusd_token
+        nusd_token = overrides.get("nusd_token") or adapter_config.nusd_token
         self.cooldown_period = (
             overrides.get("cooldown_period") or adapter_config.cooldown_period or 864000
         )
 
-        if not self.snusd_token:
+        if not snusd_token:
             raise ValueError("sNUSD adapter requires snusd_token configuration")
-        if not self.nusd_token:
+        if not nusd_token:
             raise ValueError("sNUSD adapter requires nusd_token configuration")
 
-        self.snusd_token = self.w3.to_checksum_address(self.snusd_token)
-        self.nusd_token = self.w3.to_checksum_address(self.nusd_token)
+        self.snusd_token = self.w3.to_checksum_address(snusd_token)
+        self.nusd_token = self.w3.to_checksum_address(nusd_token)
 
         # Get current block timestamp for cooldown calculations
         self._block_timestamp_cache: int | None = None

@@ -182,7 +182,9 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
         # Get vault token balance
         vault_balance = await self._balance_of(vault_token, subvault_address)
         if vault_balance == 0:
-            logger.debug("ERC4626 %s: zero balance for %s", vault_name, subvault_address)
+            logger.debug(
+                "ERC4626 %s: zero balance for %s", vault_name, subvault_address
+            )
             return []
 
         # Convert to underlying assets
