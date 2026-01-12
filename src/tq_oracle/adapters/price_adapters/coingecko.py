@@ -271,6 +271,14 @@ class CoinGeckoAdapter(BasePriceAdapter):
         # Process each token
         priced_count = 0
         for asset_address, cg_id in tokens_to_price.items():
+            # Skip assets that already have prices from higher-priority adapters (Chainlink, Manual)
+            if asset_address in prices_accumulator.prices:
+                logger.debug(
+                    "Skipping %s - already priced by higher-priority adapter",
+                    asset_address,
+                )
+                continue
+
             if cg_id not in cg_prices:
                 logger.warning(
                     "No CoinGecko price for %s (id: %s)",
