@@ -83,6 +83,25 @@ class PendleAdapterSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class ERC4626AdapterSettings(BaseModel):
+    """Configuration options for ERC4626 vault adapter defaults."""
+
+    vaults: dict[str, dict[str, str]] = Field(default_factory=dict)
+    # vaults structure: { "vault_name": { "vault_token": "0x...", "underlying_asset": "0x..." } }
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class SNUSDAdapterSettings(BaseModel):
+    """Configuration options for sNUSD adapter defaults."""
+
+    snusd_token: str | None = None
+    nusd_token: str | None = None
+    cooldown_period: int | None = None  # Optional, defaults to 10 days (864000s)
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class AdapterSettings(BaseModel):
     stakewise: StakewiseAdapterSettings = Field(
         default_factory=StakewiseAdapterSettings
@@ -92,6 +111,8 @@ class AdapterSettings(BaseModel):
     )
     aave_v3: AaveV3AdapterSettings = Field(default_factory=AaveV3AdapterSettings)
     pendle: PendleAdapterSettings = Field(default_factory=PendleAdapterSettings)
+    erc4626: ERC4626AdapterSettings = Field(default_factory=ERC4626AdapterSettings)
+    snusd: SNUSDAdapterSettings = Field(default_factory=SNUSDAdapterSettings)
 
     model_config = ConfigDict(extra="ignore")
 
