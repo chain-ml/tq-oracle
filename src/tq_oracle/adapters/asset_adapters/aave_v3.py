@@ -278,7 +278,11 @@ class AaveV3Adapter(BaseAssetAdapter):
             List of AssetData with positive amounts for supply and negative for borrows
         """
         instance_label = f" ({self.instance_name})" if self.instance_name else ""
-        logger.info("Aave V3%s fetch_assets called for subvault %s", instance_label, subvault_address)
+        logger.info(
+            "Aave V3%s fetch_assets called for subvault %s",
+            instance_label,
+            subvault_address,
+        )
 
         if self._skip:
             logger.debug("Adapter is skipped, returning empty list")
