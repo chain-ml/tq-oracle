@@ -1,0 +1,15 @@
+{
+  "abi": [
+    {
+      "inputs": [],
+      "name": "readTokens",
+      "outputs": [
+        {"internalType": "contract IStandardizedYield", "name": "SY", "type": "address"},
+        {"internalType": "contract IPPrincipalToken", "name": "PT", "type": "address"},
+        {"internalType": "contract IPYieldToken", "name": "YT", "type": "address"}
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

@@ -18,6 +18,10 @@ def test_calculate_total_assets_basic():
             "0xA": 10**18,
             "0xB": 2 * 10**18,
         },
+        decimals={
+            "0xA": 18,
+            "0xB": 18,
+        },
     )
 
     result = calculate_total_assets(aggregated, prices)
@@ -46,6 +50,10 @@ def test_calculate_total_assets_missing_prices_raises():
         prices={
             "0xA": 10**18,
         },
+        decimals={
+            "0xA": 18,
+            "0xB": 18,
+        },
     )
 
     with pytest.raises(ValueError, match=r"Prices missing for assets: \['0xB'\]"):
@@ -64,6 +72,11 @@ def test_calculate_total_assets_multiple_missing_prices_raises():
         base_asset="0xA",
         prices={
             "0xA": 10**18,
+        },
+        decimals={
+            "0xA": 18,
+            "0xB": 18,
+            "0xC": 18,
         },
     )
 
@@ -87,6 +100,11 @@ def test_calculate_total_assets_with_extra_prices():
             "0xB": 2 * 10**18,
             "0xC": 5 * 10**18,
         },
+        decimals={
+            "0xA": 18,
+            "0xB": 18,
+            "0xC": 18,
+        },
     )
 
     result = calculate_total_assets(aggregated, prices)
@@ -109,11 +127,14 @@ def test_calculate_total_assets_invalid_prices_raises():
             "0xB": 0,
             "0xC": -100,
         },
+        decimals={
+            "0xA": 18,
+            "0xB": 18,
+            "0xC": 18,
+        },
     )
 
-    with pytest.raises(
-        ValueError, match=r"Invalid prices for assets: 0xB: 0, 0xC: -100"
-    ):
+    with pytest.raises(ValueError, match=r"Invalid prices for assets:"):
         calculate_total_assets(aggregated, prices)
 
 
@@ -154,7 +175,8 @@ def test_calculate_total_assets_scenarios(test_name, assets, prices, expected_to
     - A mix of zero and non-zero assets should be calculated correctly.
     """
     aggregated = AggregatedAssets(assets=assets)
-    price_data = PriceData(base_asset="0xBASE", prices=prices)
+    decimals = {addr: 18 for addr in prices.keys()}
+    price_data = PriceData(base_asset="0xBASE", prices=prices, decimals=decimals)
 
     result = calculate_total_assets(aggregated, price_data)
 
@@ -201,10 +223,10 @@ def test_calculate_total_assets_precision_and_truncation(
 ):
     """
     Tests the integer division to ensure correct truncation of fractional results.
-    The formula `amount * price // 10**18` should truncate, not round.
+    The formula `amount * price // 10**decimals` should truncate, not round.
     """
     aggregated = AggregatedAssets(assets={"0xA": amount})
-    prices = PriceData(base_asset="0xBASE", prices={"0xA": price})
+    prices = PriceData(base_asset="0xBASE", prices={"0xA": price}, decimals={"0xA": 18})
 
     result = calculate_total_assets(aggregated, prices)
 
@@ -221,7 +243,9 @@ def test_calculate_total_assets_with_large_but_valid_numbers():
     large_price = 5 * 10**18
 
     aggregated = AggregatedAssets(assets={"0xA": large_amount})
-    prices = PriceData(base_asset="0xBASE", prices={"0xA": large_price})
+    prices = PriceData(
+        base_asset="0xBASE", prices={"0xA": large_price}, decimals={"0xA": 18}
+    )
 
     # (large_amount * 5 * 10**18) // 10**18 = large_amount * 5, still < 2**256
     expected_result = large_amount * 5

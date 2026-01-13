@@ -12,7 +12,9 @@ class PriceData:
 
     base_asset: str
     prices: dict[str, int]  # asset_address -> price_wei (18 decimals)
-    decimals: dict[str, int] = field(default_factory=dict)  # asset_address -> token_decimals
+    decimals: dict[str, int] = field(
+        default_factory=dict
+    )  # asset_address -> token_decimals
 
 
 class BasePriceAdapter(ABC):

@@ -1,0 +1,28 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {"internalType": "address", "name": "market", "type": "address"},
+        {"internalType": "uint32", "name": "duration", "type": "uint32"}
+      ],
+      "name": "getPtToAssetRate",
+      "outputs": [
+        {"internalType": "uint256", "name": "ptToAssetRate", "type": "uint256"}
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "address", "name": "market", "type": "address"},
+        {"internalType": "uint32", "name": "duration", "type": "uint32"}
+      ],
+      "name": "getLpToAssetRate",
+      "outputs": [
+        {"internalType": "uint256", "name": "lpToAssetRate", "type": "uint256"}
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}
