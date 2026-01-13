@@ -409,6 +409,22 @@ async def collect_assets(ctx: PipelineContext) -> None:
 
         subvault_asset_map[subvault_addr.lower()] = subvault_assets
 
+    # Fetch assets for extra addresses (e.g., swap module)
+    extra_addresses_assets: dict[str, list[AssetData]] = {}
+    if should_run_default_idle_balances and idle_vault_adapter:
+        idle_config = s.adapters.idle_balances
+        extra_addrs = idle_vault_adapter._extra_addresses if hasattr(idle_vault_adapter, '_extra_addresses') else []
+        if extra_addrs:
+            log.info("Fetching assets for %d extra addresses...", len(extra_addrs))
+            for extra_addr in extra_addrs:
+                try:
+                    extra_assets = await idle_vault_adapter.fetch_assets(extra_addr)
+                    if extra_assets:
+                        log.info(f"  extra_address {extra_addr}: {len(extra_assets)} assets")
+                        extra_addresses_assets[extra_addr.lower()] = extra_assets
+                except Exception as e:
+                    log.error(f"  Failed to fetch assets for extra address {extra_addr}: {e}")
+
     log.info("Computing aggregated assets...")
     aggregated = await compute_total_aggregated_assets(asset_data)
     log.debug("Total aggregated assets: %d", len(aggregated.assets))
@@ -421,3 +437,4 @@ async def collect_assets(ctx: PipelineContext) -> None:
 
     # Store subvault mapping in context for later use
     ctx.subvault_asset_map = subvault_asset_map
+    ctx.extra_addresses_assets = extra_addresses_assets
