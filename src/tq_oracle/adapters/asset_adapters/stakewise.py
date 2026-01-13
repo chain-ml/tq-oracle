@@ -161,7 +161,9 @@ class StakeWiseAdapter(BaseAssetAdapter):
                 if delay > 0:
                     await asyncio.sleep(delay)
 
-    async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
+    async def fetch_assets(
+        self, subvault_address: str, previous_assets: list[AssetData] | None = None
+    ) -> list[AssetData]:
         user = self.w3.to_checksum_address(subvault_address)
         logger.info(
             "StakeWise adapter collecting balances — user=%s block=%s skip_exit_queue=%s",

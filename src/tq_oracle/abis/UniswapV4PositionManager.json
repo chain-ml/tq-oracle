@@ -1,0 +1,39 @@
+{
+  "abi": [
+    {
+      "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+      "name": "ownerOf",
+      "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+      "name": "getPoolAndPositionInfo",
+      "outputs": [
+        {
+          "components": [
+            {"internalType": "address", "name": "currency0", "type": "address"},
+            {"internalType": "address", "name": "currency1", "type": "address"},
+            {"internalType": "uint24", "name": "fee", "type": "uint24"},
+            {"internalType": "int24", "name": "tickSpacing", "type": "int24"},
+            {"internalType": "address", "name": "hooks", "type": "address"}
+          ],
+          "internalType": "struct PoolKey",
+          "name": "poolKey",
+          "type": "tuple"
+        },
+        {"internalType": "uint256", "name": "info", "type": "uint256"}
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+      "name": "getPositionLiquidity",
+      "outputs": [{"internalType": "uint128", "name": "", "type": "uint128"}],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

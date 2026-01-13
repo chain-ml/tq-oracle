@@ -63,8 +63,14 @@ class StakewiseAdapterSettings(BaseModel):
 
 
 class AaveV3AdapterSettings(BaseModel):
-    """Configuration options for Aave V3 adapter defaults."""
+    """Configuration options for Aave V3 adapter defaults.
 
+    Can be used as a single config or as part of a list for multiple instances
+    (e.g., Aave + Spark). When using multiple instances, each must have a unique
+    'name' field to reference in additional_adapters as 'aave_v3.{name}'.
+    """
+
+    name: str | None = None  # Instance name for multi-config (e.g., "spark", "aave")
     pool_address: str | None = None
     supply_tokens: dict[str, str] = Field(default_factory=dict)
     borrow_tokens: dict[str, str] = Field(default_factory=dict)
@@ -102,6 +108,25 @@ class SNUSDAdapterSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class UniswapV3AdapterSettings(BaseModel):
+    """Configuration options for Uniswap V3 adapter defaults."""
+
+    position_manager: str | None = None  # Defaults to mainnet if not provided
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class UniswapV4AdapterSettings(BaseModel):
+    """Configuration options for Uniswap V4 adapter defaults."""
+
+    position_manager: str | None = None  # Required for V4
+    pool_manager: str | None = None  # Defaults to mainnet if not provided
+    pools: list[dict[str, Any]] = Field(default_factory=list)
+    # pools structure: [{ "token0": "0x...", "token1": "0x...", "fee": 3000, "tick_spacing": 60, "hook": "0x..." }]
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class AdapterSettings(BaseModel):
     stakewise: StakewiseAdapterSettings = Field(
         default_factory=StakewiseAdapterSettings
@@ -109,12 +134,53 @@ class AdapterSettings(BaseModel):
     idle_balances: IdleBalancesAdapterSettings = Field(
         default_factory=IdleBalancesAdapterSettings
     )
-    aave_v3: AaveV3AdapterSettings = Field(default_factory=AaveV3AdapterSettings)
+    # aave_v3 supports both single config (backwards compat) and list of named configs
+    aave_v3: AaveV3AdapterSettings | list[AaveV3AdapterSettings] = Field(
+        default_factory=AaveV3AdapterSettings
+    )
     pendle: PendleAdapterSettings = Field(default_factory=PendleAdapterSettings)
     erc4626: ERC4626AdapterSettings = Field(default_factory=ERC4626AdapterSettings)
     snusd: SNUSDAdapterSettings = Field(default_factory=SNUSDAdapterSettings)
+    uniswap_v3: UniswapV3AdapterSettings = Field(
+        default_factory=UniswapV3AdapterSettings
+    )
+    uniswap_v4: UniswapV4AdapterSettings = Field(
+        default_factory=UniswapV4AdapterSettings
+    )
 
     model_config = ConfigDict(extra="ignore")
+
+    def get_aave_v3_config(
+        self, instance_name: str | None = None
+    ) -> AaveV3AdapterSettings | None:
+        """Get Aave V3 config by instance name.
+
+        Args:
+            instance_name: The instance name (e.g., 'spark', 'aave').
+                          If None, returns the single/default config.
+
+        Returns:
+            The matching AaveV3AdapterSettings or None if not found.
+        """
+        if isinstance(self.aave_v3, list):
+            if instance_name is None:
+                # Return first config if no name specified
+                return self.aave_v3[0] if self.aave_v3 else None
+            for config in self.aave_v3:
+                if config.name == instance_name:
+                    return config
+            return None
+        else:
+            # Single config - return it if no name specified or if name matches
+            if instance_name is None or self.aave_v3.name == instance_name:
+                return self.aave_v3
+            return None
+
+    def get_aave_v3_configs(self) -> list[AaveV3AdapterSettings]:
+        """Get all Aave V3 configs as a list."""
+        if isinstance(self.aave_v3, list):
+            return self.aave_v3
+        return [self.aave_v3]
 
 
 class OracleSettings(BaseSettings):

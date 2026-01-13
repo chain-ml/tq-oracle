@@ -33,6 +33,20 @@ class BaseAssetAdapter(ABC):
         ...
 
     @abstractmethod
-    async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
-        """Fetch asset data for the given subvault."""
+    async def fetch_assets(
+        self,
+        subvault_address: str,
+        previous_assets: list[AssetData] | None = None,
+    ) -> list[AssetData]:
+        """Fetch asset data for the given subvault.
+
+        Args:
+            subvault_address: Subvault to query
+            previous_assets: Optional results from previous adapters in chain.
+                            Allows adapters to transform/convert wrapped tokens
+                            from earlier adapters (e.g., PT tokens, ERC4626 vaults).
+
+        Returns:
+            List of assets discovered and/or transformed by this adapter
+        """
         ...

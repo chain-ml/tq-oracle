@@ -32,6 +32,8 @@ SNUSD_ABI_PATH = ABIS_DIR / "SNUSD.json"
 PENDLE_ORACLE_ABI_PATH = ABIS_DIR / "PendleOracle.json"
 PENDLE_MARKET_ABI_PATH = ABIS_DIR / "PendleMarket.json"
 CHAINLINK_FEED_ABI_PATH = ABIS_DIR / "ChainlinkFeed.json"
+UNISWAP_V4_POSITION_MANAGER_ABI_PATH = ABIS_DIR / "UniswapV4PositionManager.json"
+UNISWAP_V4_STATE_VIEW_ABI_PATH = ABIS_DIR / "UniswapV4StateView.json"
 
 
 def load_abi(path: str | Path) -> list[dict]:
@@ -136,6 +138,16 @@ def load_pendle_market_abi() -> list[dict]:
 def load_chainlink_feed_abi() -> list[dict]:
     """Load the Chainlink Feed ABI."""
     return load_abi(CHAINLINK_FEED_ABI_PATH)
+
+
+def load_uniswap_v4_position_manager_abi() -> list[dict]:
+    """Load the Uniswap V4 PositionManager ABI."""
+    return load_abi(UNISWAP_V4_POSITION_MANAGER_ABI_PATH)
+
+
+def load_uniswap_v4_state_view_abi() -> list[dict]:
+    """Load the Uniswap V4 StateView ABI."""
+    return load_abi(UNISWAP_V4_STATE_VIEW_ABI_PATH)
 
 
 def get_oracle_address_from_vault(settings: OracleSettings) -> ChecksumAddress:

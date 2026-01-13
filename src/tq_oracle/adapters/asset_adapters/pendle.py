@@ -314,23 +314,29 @@ class PendleAdapter(BaseAssetAdapter):
             )
         ]
 
-    async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
+    async def fetch_assets(
+        self,
+        subvault_address: str,
+        previous_assets: list[AssetData] | None = None,
+    ) -> list[AssetData]:
         """Fetch Pendle PT and LP positions for a subvault.
 
         This method:
         1. Queries PT balances for all configured markets
         2. Queries LP balances for all configured markets
         3. Uses Pendle oracle to get current market rates
-        4. Returns positions valued in accounting assets
+        4. Converts any PT tokens from previous adapters (e.g., from Aave collateral)
+        5. Returns positions valued in accounting assets
 
         Args:
             subvault_address: Subvault address to query
+            previous_assets: Optional assets from previous adapters (for conversion)
 
         Returns:
             List of AssetData with positions valued in accounting assets
         """
         if self._skip:
-            return []
+            return previous_assets or []
 
         results: list[AssetData] = []
 
@@ -352,6 +358,12 @@ class PendleAdapter(BaseAssetAdapter):
             results.extend(pt_results)
             results.extend(lp_results)
 
+        # Convert any PT tokens from previous adapters
+        if previous_assets:
+            for asset in previous_assets:
+                converted = await self._try_convert_pt_token(asset)
+                results.append(converted if converted else asset)
+
         logger.info(
             "Pendle: fetched %d positions for subvault %s",
             len(results),
@@ -359,6 +371,70 @@ class PendleAdapter(BaseAssetAdapter):
         )
 
         return results
+
+    async def _try_convert_pt_token(self, asset: AssetData) -> AssetData | None:
+        """Try to convert asset if it's a PT token from our configured markets.
+
+        This enables conversion of PT tokens from other adapters (e.g., Aave aTokens
+        backed by PT tokens) into their underlying accounting assets.
+
+        Args:
+            asset: Asset to potentially convert
+
+        Returns:
+            Converted AssetData if this was a PT token, None otherwise (pass through)
+        """
+        pt_address = asset.asset_address.lower()
+
+        # Check each configured market to see if this asset is a PT token
+        for market_name, market_config in self.markets.items():
+            try:
+                market_address = market_config["market"]
+                accounting_asset = market_config["accounting_asset"]
+
+                # Get the PT token address for this market
+                market_pt_address = await self._get_pt_address(market_address)
+
+                if market_pt_address.lower() == pt_address:
+                    # This IS a PT token we can convert!
+                    logger.info(
+                        "Pendle: detected PT token %s from previous adapter, converting to %s",
+                        pt_address,
+                        accounting_asset,
+                    )
+
+                    # Get conversion rate
+                    pt_rate = await self._get_pt_to_asset_rate(market_address)
+
+                    # Convert: PT amount → accounting asset amount
+                    asset_value = (asset.amount * pt_rate) // (10**18)
+
+                    logger.info(
+                        "Pendle: converted PT %s: balance=%d, rate=%d, value=%d %s",
+                        market_name,
+                        asset.amount,
+                        pt_rate,
+                        asset_value,
+                        accounting_asset,
+                    )
+
+                    return AssetData(
+                        asset_address=Web3.to_checksum_address(accounting_asset),
+                        amount=asset_value,
+                        tvl_only=asset.tvl_only,
+                    )
+
+            except Exception as e:
+                logger.debug(
+                    "Pendle: error checking if %s is PT token for market %s: %s",
+                    pt_address,
+                    market_name,
+                    e,
+                )
+                continue
+
+        # Not a PT token we know about - return None to pass through unchanged
+        return None
 
     async def fetch_all_assets(self) -> list[AssetData]:
         """Global asset fetching not supported for Pendle.

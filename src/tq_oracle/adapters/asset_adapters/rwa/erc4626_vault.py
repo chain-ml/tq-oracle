@@ -214,47 +214,56 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
             )
         ]
 
-    async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
+    async def fetch_assets(
+        self,
+        subvault_address: str,
+        previous_assets: list[AssetData] | None = None,
+    ) -> list[AssetData]:
         """Fetch ERC4626 vault positions for a subvault.
 
         This method:
         1. Queries vault token balances for all configured vaults
         2. Converts shares to underlying assets via convertToAssets()
-        3. Returns underlying assets for pricing pipeline
+        3. Converts any ERC4626 vault tokens from previous adapters
+        4. Returns underlying assets for pricing pipeline
 
         Args:
             subvault_address: Subvault address to query
+            previous_assets: Optional assets from previous adapters (for conversion)
 
         Returns:
             List of AssetData with underlying asset amounts
         """
-        if not self.vaults:
-            logger.debug("ERC4626 adapter: no vaults configured")
-            return []
-
         results: list[AssetData] = []
 
-        # Process each vault
-        for vault_name, vault_config in self.vaults.items():
-            if "vault_token" not in vault_config:
-                logger.warning(
-                    "Skipping ERC4626 vault %s: missing 'vault_token' config",
-                    vault_name,
-                )
-                continue
+        # Process each vault owned by this subvault
+        if self.vaults:
+            for vault_name, vault_config in self.vaults.items():
+                if "vault_token" not in vault_config:
+                    logger.warning(
+                        "Skipping ERC4626 vault %s: missing 'vault_token' config",
+                        vault_name,
+                    )
+                    continue
 
-            try:
-                vault_results = await self._process_vault_position(
-                    vault_name, vault_config, subvault_address
-                )
-                results.extend(vault_results)
-            except Exception as e:
-                logger.error(
-                    "ERC4626 vault %s failed for %s: %s",
-                    vault_name,
-                    subvault_address,
-                    e,
-                )
+                try:
+                    vault_results = await self._process_vault_position(
+                        vault_name, vault_config, subvault_address
+                    )
+                    results.extend(vault_results)
+                except Exception as e:
+                    logger.error(
+                        "ERC4626 vault %s failed for %s: %s",
+                        vault_name,
+                        subvault_address,
+                        e,
+                    )
+
+        # Convert any ERC4626 vault tokens from previous adapters
+        if previous_assets:
+            for asset in previous_assets:
+                converted = await self._try_convert_vault_token(asset)
+                results.append(converted if converted else asset)
 
         logger.info(
             "ERC4626: fetched %d positions for subvault %s",
@@ -263,6 +272,63 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
         )
 
         return results
+
+    async def _try_convert_vault_token(self, asset: AssetData) -> AssetData | None:
+        """Try to convert asset if it's an ERC4626 vault token we know about.
+
+        This enables conversion of vault tokens from other adapters (e.g., Aave aTokens
+        backed by ERC4626 vault tokens) into their underlying assets.
+
+        Args:
+            asset: Asset to potentially convert
+
+        Returns:
+            Converted AssetData if this was a vault token, None otherwise (pass through)
+        """
+        vault_address = asset.asset_address.lower()
+
+        # Check if this is a vault token in our config
+        for vault_name, vault_config in self.vaults.items():
+            if vault_config["vault_token"].lower() == vault_address:
+                # This IS a vault token we can convert!
+                underlying_asset = vault_config.get("underlying_asset")
+
+                logger.info(
+                    "ERC4626: detected vault token %s from previous adapter, converting to underlying",
+                    vault_address,
+                )
+
+                # Convert shares to assets
+                underlying_amount = await self._convert_to_assets(
+                    vault_config["vault_token"], asset.amount
+                )
+
+                # Fetch underlying asset if not configured
+                if not underlying_asset:
+                    underlying_asset = await self._get_underlying_asset(
+                        vault_config["vault_token"]
+                    )
+                    logger.debug(
+                        "ERC4626: fetched underlying asset %s from vault",
+                        underlying_asset,
+                    )
+
+                logger.info(
+                    "ERC4626: converted vault token %s: shares=%d, underlying=%d (%s)",
+                    vault_name,
+                    asset.amount,
+                    underlying_amount,
+                    underlying_asset,
+                )
+
+                return AssetData(
+                    asset_address=Web3.to_checksum_address(underlying_asset),
+                    amount=underlying_amount,
+                    tvl_only=asset.tvl_only,
+                )
+
+        # Not a vault token we know - return None to pass through unchanged
+        return None
 
     async def fetch_all_assets(self) -> list[AssetData]:
         """Global asset fetching not supported for ERC4626.

@@ -247,7 +247,9 @@ class SNUSDAdapter(BaseAssetAdapter):
             claimable_nusd=claimable_nusd,
         )
 
-    async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
+    async def fetch_assets(
+        self, subvault_address: str, previous_assets: list[AssetData] | None = None
+    ) -> list[AssetData]:
         """Fetch sNUSD positions for a subvault.
 
         This method:

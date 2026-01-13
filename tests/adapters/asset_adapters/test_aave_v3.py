@@ -546,3 +546,255 @@ class TestAaveV3Integration:
 
         assert isinstance(balance, int)
         assert balance >= 0
+
+
+# =============================================================================
+# Multi-Instance Config Tests (Aave + Spark)
+# =============================================================================
+
+
+class TestMultiInstanceConfig:
+    """Tests for multi-instance Aave V3 config (Aave + Spark pattern)."""
+
+    @pytest.fixture
+    def aave_config(self):
+        """Aave V3 mainnet config."""
+        return {
+            "name": "aave",
+            "pool_address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+            "supply_tokens": {
+                "WETH": "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8",
+                "USDC": "0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c",
+            },
+            "borrow_tokens": {
+                "WETH": "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE",
+                "USDC": "0x72E95b8931767C79bA4EeE721354d6E99a61D004",
+            },
+        }
+
+    @pytest.fixture
+    def spark_config(self):
+        """Spark Protocol config (Aave V3 fork)."""
+        return {
+            "name": "spark",
+            "pool_address": "0xC13e21B648A5Ee794902342038FF3aDAB66BE987",
+            "supply_tokens": {
+                "WETH": "0x59cD1C87501baa753d0B5B5Ab5D8416A45cD71DB",
+                "DAI": "0x4DEDf26112B3Ec8eC46e7E31EA5e123490B05B8B",
+                "USDC": "0x377C3bd93f2a2984E1E7bE6A5C22c525eD4A4815",
+            },
+            "borrow_tokens": {
+                "WETH": "0x2e7576042566f8D6990e07A1B61Ad1efd86Ae70d",
+                "DAI": "0xf705d2B7e92B3F38e6ae7571e0F1533caDC5f10A",
+                "USDC": "0x7B70D04099CB9cfb1Db7B6820baDAfB4C5C70A67",
+            },
+        }
+
+    def test_single_config_backwards_compatible(self, config):
+        """Single Aave config should work as before."""
+        from tq_oracle.settings import AdapterSettings, AaveV3AdapterSettings
+
+        settings = AdapterSettings(
+            aave_v3=AaveV3AdapterSettings(
+                pool_address="0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+            )
+        )
+
+        # get_aave_v3_config with no name should return the single config
+        result = settings.get_aave_v3_config()
+        assert result is not None
+        assert result.pool_address == "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+
+    def test_multi_config_list_parsing(self, aave_config, spark_config):
+        """Multiple configs should be parsed as a list."""
+        from tq_oracle.settings import AdapterSettings, AaveV3AdapterSettings
+
+        settings = AdapterSettings(
+            aave_v3=[
+                AaveV3AdapterSettings(**aave_config),
+                AaveV3AdapterSettings(**spark_config),
+            ]
+        )
+
+        configs = settings.get_aave_v3_configs()
+        assert len(configs) == 2
+        assert configs[0].name == "aave"
+        assert configs[1].name == "spark"
+
+    def test_get_config_by_name_aave(self, aave_config, spark_config):
+        """Should retrieve Aave config by name."""
+        from tq_oracle.settings import AdapterSettings, AaveV3AdapterSettings
+
+        settings = AdapterSettings(
+            aave_v3=[
+                AaveV3AdapterSettings(**aave_config),
+                AaveV3AdapterSettings(**spark_config),
+            ]
+        )
+
+        result = settings.get_aave_v3_config("aave")
+        assert result is not None
+        assert result.name == "aave"
+        assert result.pool_address == "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+
+    def test_get_config_by_name_spark(self, aave_config, spark_config):
+        """Should retrieve Spark config by name."""
+        from tq_oracle.settings import AdapterSettings, AaveV3AdapterSettings
+
+        settings = AdapterSettings(
+            aave_v3=[
+                AaveV3AdapterSettings(**aave_config),
+                AaveV3AdapterSettings(**spark_config),
+            ]
+        )
+
+        result = settings.get_aave_v3_config("spark")
+        assert result is not None
+        assert result.name == "spark"
+        assert result.pool_address == "0xC13e21B648A5Ee794902342038FF3aDAB66BE987"
+
+    def test_get_config_by_name_not_found(self, aave_config, spark_config):
+        """Should return None for non-existent config name."""
+        from tq_oracle.settings import AdapterSettings, AaveV3AdapterSettings
+
+        settings = AdapterSettings(
+            aave_v3=[
+                AaveV3AdapterSettings(**aave_config),
+                AaveV3AdapterSettings(**spark_config),
+            ]
+        )
+
+        result = settings.get_aave_v3_config("nonexistent")
+        assert result is None
+
+    def test_get_default_config_from_list(self, aave_config, spark_config):
+        """No name should return first config in list."""
+        from tq_oracle.settings import AdapterSettings, AaveV3AdapterSettings
+
+        settings = AdapterSettings(
+            aave_v3=[
+                AaveV3AdapterSettings(**aave_config),
+                AaveV3AdapterSettings(**spark_config),
+            ]
+        )
+
+        result = settings.get_aave_v3_config(None)
+        assert result is not None
+        assert result.name == "aave"  # First in list
+
+    def test_spark_has_different_tokens(self, aave_config, spark_config):
+        """Spark config should have different supply/borrow tokens."""
+        from tq_oracle.settings import AdapterSettings, AaveV3AdapterSettings
+
+        settings = AdapterSettings(
+            aave_v3=[
+                AaveV3AdapterSettings(**aave_config),
+                AaveV3AdapterSettings(**spark_config),
+            ]
+        )
+
+        aave = settings.get_aave_v3_config("aave")
+        spark = settings.get_aave_v3_config("spark")
+
+        assert aave is not None
+        assert spark is not None
+
+        # Pool addresses should be different
+        assert aave.pool_address != spark.pool_address
+
+        # Supply tokens should be different (different aToken addresses)
+        assert aave.supply_tokens["WETH"] != spark.supply_tokens["WETH"]
+
+        # Borrow tokens should be different
+        assert aave.borrow_tokens["WETH"] != spark.borrow_tokens["WETH"]
+
+    def test_spark_has_dai_token(self, spark_config):
+        """Spark config should include DAI tokens (not in Aave config)."""
+        from tq_oracle.settings import AaveV3AdapterSettings
+
+        spark = AaveV3AdapterSettings(**spark_config)
+
+        assert "DAI" in spark.supply_tokens
+        assert "DAI" in spark.borrow_tokens
+
+    def test_adapter_with_spark_override(self, config, spark_config):
+        """AaveV3Adapter should accept Spark config via overrides."""
+        spark_pool = spark_config["pool_address"]
+        spark_supply = spark_config["supply_tokens"]
+        spark_borrow = spark_config["borrow_tokens"]
+
+        adapter = AaveV3Adapter(
+            config,
+            pool_address=spark_pool,
+            supply_tokens=spark_supply,
+            borrow_tokens=spark_borrow,
+        )
+
+        assert adapter.pool_address == spark_pool
+        assert adapter.supply_tokens == spark_supply
+        assert adapter.borrow_tokens == spark_borrow
+        assert "DAI" in adapter.supply_tokens
+
+
+class TestSparkIntegration:
+    """Integration tests for Spark Protocol (Aave V3 fork)."""
+
+    @pytest.fixture
+    def spark_adapter(self, config):
+        """Create adapter configured for Spark Protocol."""
+        return AaveV3Adapter(
+            config,
+            pool_address="0xC13e21B648A5Ee794902342038FF3aDAB66BE987",
+            supply_tokens={
+                "WETH": "0x59cD1C87501baa753d0B5B5Ab5D8416A45cD71DB",
+                "DAI": "0x4DEDf26112B3Ec8eC46e7E31EA5e123490B05B8B",
+                "USDC": "0x377C3bd93f2a2984E1E7bE6A5C22c525eD4A4815",
+            },
+            borrow_tokens={
+                "WETH": "0x2e7576042566f8D6990e07A1B61Ad1efd86Ae70d",
+                "DAI": "0xf705d2B7e92B3F38e6ae7571e0F1533caDC5f10A",
+                "USDC": "0x7B70D04099CB9cfb1Db7B6820baDAfB4C5C70A67",
+            },
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_spark_get_underlying_sp_weth(self, spark_adapter):
+        """Integration: Verify spWETH returns WETH underlying address."""
+        sp_weth = "0x59cD1C87501baa753d0B5B5Ab5D8416A45cD71DB"
+        underlying = await spark_adapter._get_underlying_asset(sp_weth)
+
+        expected_weth = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+        assert underlying.lower() == expected_weth.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_spark_get_underlying_sp_dai(self, spark_adapter):
+        """Integration: Verify spDAI returns DAI underlying address."""
+        sp_dai = "0x4DEDf26112B3Ec8eC46e7E31EA5e123490B05B8B"
+        underlying = await spark_adapter._get_underlying_asset(sp_dai)
+
+        expected_dai = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+        assert underlying.lower() == expected_dai.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_spark_get_underlying_sp_usdc(self, spark_adapter):
+        """Integration: Verify spUSDC returns USDC underlying address."""
+        sp_usdc = "0x377C3bd93f2a2984E1E7bE6A5C22c525eD4A4815"
+        underlying = await spark_adapter._get_underlying_asset(sp_usdc)
+
+        expected_usdc = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+        assert underlying.lower() == expected_usdc.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_spark_balance_of_returns_integer(
+        self, spark_adapter, subvault_address
+    ):
+        """Integration: Verify balance_of works with Spark tokens."""
+        sp_dai = "0x4DEDf26112B3Ec8eC46e7E31EA5e123490B05B8B"
+        balance = await spark_adapter._balance_of(sp_dai, subvault_address)
+
+        assert isinstance(balance, int)
+        assert balance >= 0

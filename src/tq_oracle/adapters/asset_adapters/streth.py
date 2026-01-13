@@ -150,7 +150,9 @@ class StrETHAdapter(BaseAssetAdapter):
             result.append(AssetData(checksum, amount))
         return result
 
-    async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
+    async def fetch_assets(
+        self, subvault_address: str, previous_assets: list[AssetData] | None = None
+    ) -> list[AssetData]:
         if self._skip:
             return []
         return await self._fetch_assets([subvault_address])
