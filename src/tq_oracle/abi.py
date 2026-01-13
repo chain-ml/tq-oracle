@@ -27,6 +27,11 @@ FEE_MANAGER_ABI_PATH = ABIS_DIR / "FeeManager.json"
 STAKEWISE_VAULT_ABI_PATH = ABIS_DIR / "StakeWiseVault.json"
 STAKEWISE_OS_TOKEN_VAULT_ESCROW_ABI_PATH = ABIS_DIR / "StakeWiseOsTokenVaultEscrow.json"
 OSTOKEN_VAULT_CONTROLLER_ABI_PATH = ABIS_DIR / "OsTokenVaultController.json"
+ERC4626_ABI_PATH = ABIS_DIR / "ERC4626.json"
+SNUSD_ABI_PATH = ABIS_DIR / "SNUSD.json"
+PENDLE_ORACLE_ABI_PATH = ABIS_DIR / "PendleOracle.json"
+PENDLE_MARKET_ABI_PATH = ABIS_DIR / "PendleMarket.json"
+CHAINLINK_FEED_ABI_PATH = ABIS_DIR / "ChainlinkFeed.json"
 
 
 def load_abi(path: str | Path) -> list[dict]:
@@ -106,6 +111,31 @@ def load_stakewise_os_token_vault_escrow_abi() -> list[dict]:
 def load_ostoken_vault_controller_abi() -> list[dict]:
     """Load the OsToken Vault Controller ABI."""
     return load_abi(OSTOKEN_VAULT_CONTROLLER_ABI_PATH)
+
+
+def load_erc4626_abi() -> list[dict]:
+    """Load the ERC4626 vault ABI."""
+    return load_abi(ERC4626_ABI_PATH)
+
+
+def load_snusd_abi() -> list[dict]:
+    """Load the sNUSD ABI."""
+    return load_abi(SNUSD_ABI_PATH)
+
+
+def load_pendle_oracle_abi() -> list[dict]:
+    """Load the Pendle Oracle ABI."""
+    return load_abi(PENDLE_ORACLE_ABI_PATH)
+
+
+def load_pendle_market_abi() -> list[dict]:
+    """Load the Pendle Market ABI."""
+    return load_abi(PENDLE_MARKET_ABI_PATH)
+
+
+def load_chainlink_feed_abi() -> list[dict]:
+    """Load the Chainlink Feed ABI."""
+    return load_abi(CHAINLINK_FEED_ABI_PATH)
 
 
 def get_oracle_address_from_vault(settings: OracleSettings) -> ChecksumAddress:

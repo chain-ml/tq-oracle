@@ -20,7 +20,7 @@ import backoff
 from web3 import Web3
 from web3.exceptions import ProviderConnectionError
 
-from ....abi import load_erc20_abi
+from ....abi import load_erc20_abi, load_snusd_abi
 from ....logger import get_logger
 from ..base import AssetData, BaseAssetAdapter
 
@@ -70,38 +70,6 @@ class SNUSDAdapter(BaseAssetAdapter):
     cooldown_period = 864000  # 10 days in seconds (optional, for validation)
     """
 
-    # sNUSD ABI - convertToAssets + cooldowns
-    _SNUSD_ABI = [
-        {
-            "inputs": [{"internalType": "uint256", "name": "shares", "type": "uint256"}],
-            "name": "convertToAssets",
-            "outputs": [{"internalType": "uint256", "name": "assets", "type": "uint256"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        {
-            "inputs": [],
-            "name": "asset",
-            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        {
-            "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
-            "name": "cooldowns",
-            "outputs": [
-                {"internalType": "uint104", "name": "cooldownEnd", "type": "uint104"},
-                {
-                    "internalType": "uint256",
-                    "name": "underlyingAmount",
-                    "type": "uint256",
-                },
-            ],
-            "stateMutability": "view",
-            "type": "function",
-        },
-    ]
-
     def __init__(self, config: OracleSettings, **overrides):
         """Initialize sNUSD adapter.
 
@@ -129,19 +97,19 @@ class SNUSDAdapter(BaseAssetAdapter):
         # Load configuration
         adapter_config = config.adapters.snusd
 
-        self.snusd_token = overrides.get("snusd_token") or adapter_config.snusd_token
-        self.nusd_token = overrides.get("nusd_token") or adapter_config.nusd_token
+        snusd_token = overrides.get("snusd_token") or adapter_config.snusd_token
+        nusd_token = overrides.get("nusd_token") or adapter_config.nusd_token
         self.cooldown_period = (
             overrides.get("cooldown_period") or adapter_config.cooldown_period or 864000
         )
 
-        if not self.snusd_token:
+        if not snusd_token:
             raise ValueError("sNUSD adapter requires snusd_token configuration")
-        if not self.nusd_token:
+        if not nusd_token:
             raise ValueError("sNUSD adapter requires nusd_token configuration")
 
-        self.snusd_token = self.w3.to_checksum_address(self.snusd_token)
-        self.nusd_token = self.w3.to_checksum_address(self.nusd_token)
+        self.snusd_token = self.w3.to_checksum_address(snusd_token)
+        self.nusd_token = self.w3.to_checksum_address(nusd_token)
 
         # Get current block timestamp for cooldown calculations
         self._block_timestamp_cache: int | None = None
@@ -214,7 +182,7 @@ class SNUSDAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=self.snusd_token,
-            abi=self._SNUSD_ABI,
+            abi=load_snusd_abi(),
         )
         assets = await self._rpc(
             contract.functions.convertToAssets(shares).call,
@@ -233,7 +201,7 @@ class SNUSDAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=self.snusd_token,
-            abi=self._SNUSD_ABI,
+            abi=load_snusd_abi(),
         )
         cooldown_end, underlying_amount = await self._rpc(
             contract.functions.cooldowns(Web3.to_checksum_address(account)).call,

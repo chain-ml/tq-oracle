@@ -10,7 +10,6 @@ from ..adapters.asset_adapters.idle_balances import IdleBalancesAdapter
 from ..adapters.asset_adapters.stakewise import StakeWiseAdapter
 from ..adapters.asset_adapters.streth import StrETHAdapter
 from ..processors import compute_total_aggregated_assets
-from ..report.subvault_breakdown import log_subvault_breakdown
 from .context import PipelineContext
 
 
@@ -338,11 +337,15 @@ async def collect_assets(ctx: PipelineContext) -> None:
         log.debug(f"Processing subvault: {subvault_addr} (lowercased: {subvault_addr.lower()})")
 
         # Idle balances
-        if should_run_default_idle_balances and not get_subvault_config(subvault_addr).get("skip_idle_balances", False):
+        if should_run_default_idle_balances and not get_subvault_config(
+            subvault_addr
+        ).get("skip_idle_balances", False):
             try:
                 idle_assets = await idle_vault_adapter.fetch_assets(subvault_addr)
                 if idle_assets:
-                    log.info(f"  idle_balances returned {len(idle_assets)} assets for {subvault_addr}")
+                    log.info(
+                        f"  idle_balances returned {len(idle_assets)} assets for {subvault_addr}"
+                    )
                     for asset in idle_assets:
                         log.debug(f"    - {asset.asset_address}: {asset.amount}")
                 else:
@@ -356,7 +359,9 @@ async def collect_assets(ctx: PipelineContext) -> None:
             try:
                 stakewise_assets = await stakewise_adapter.fetch_assets(subvault_addr)
                 if stakewise_assets:
-                    log.info(f"  stakewise returned {len(stakewise_assets)} assets for {subvault_addr}")
+                    log.info(
+                        f"  stakewise returned {len(stakewise_assets)} assets for {subvault_addr}"
+                    )
                     for asset in stakewise_assets:
                         log.debug(f"    - {asset.asset_address}: {asset.amount}")
                 else:
@@ -366,11 +371,15 @@ async def collect_assets(ctx: PipelineContext) -> None:
                 log.debug(f"  stakewise failed for {subvault_addr}: {e}")
 
         # strETH
-        if should_run_streth and not get_subvault_config(subvault_addr).get("skip_streth", False):
+        if should_run_streth and not get_subvault_config(subvault_addr).get(
+            "skip_streth", False
+        ):
             try:
                 streth_assets = await streth_adapter.fetch_assets(subvault_addr)
                 if streth_assets:
-                    log.info(f"  streth returned {len(streth_assets)} assets for {subvault_addr}")
+                    log.info(
+                        f"  streth returned {len(streth_assets)} assets for {subvault_addr}"
+                    )
                     for asset in streth_assets:
                         log.debug(f"    - {asset.asset_address}: {asset.amount}")
                 else:

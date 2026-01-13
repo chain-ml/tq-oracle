@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 
 from ..abi import fetch_subvault_addresses
 from ..adapters import PRICE_ADAPTERS
@@ -75,4 +74,6 @@ async def price_assets(ctx: PipelineContext) -> None:
         # Log each subvault's breakdown
         for subvault_addr in subvault_addresses:
             assets_for_subvault = ctx.subvault_asset_map.get(subvault_addr.lower(), [])
-            await log_subvault_breakdown(subvault_addr, assets_for_subvault, price_data, s)
+            await log_subvault_breakdown(
+                subvault_addr, assets_for_subvault, price_data, s
+            )
