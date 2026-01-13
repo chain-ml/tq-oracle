@@ -75,5 +75,13 @@ async def price_assets(ctx: PipelineContext) -> None:
         for subvault_addr in subvault_addresses:
             assets_for_subvault = ctx.subvault_asset_map.get(subvault_addr.lower(), [])
             await log_subvault_breakdown(
-                subvault_addr, assets_for_subvault, price_data, s
+              subvault_addr, assets_for_subvault, price_data, s
             )
+
+        # Log extra addresses breakdown
+        if hasattr(ctx, 'extra_addresses_assets') and ctx.extra_addresses_assets:
+            log.info("Extra addresses asset breakdown:")
+            for extra_addr, assets_for_extra in ctx.extra_addresses_assets.items():
+                await log_subvault_breakdown(
+                  f"Extra Address: {extra_addr}", assets_for_extra, price_data, s
+                )
