@@ -7,6 +7,7 @@ from .pendle import PendleAdapter
 from .streth import StrETHAdapter
 from .stakewise import StakeWiseAdapter
 from .rwa import ERC4626VaultAdapter, SNUSDAdapter
+from .uniswap import UniswapV3Adapter, UniswapV4Adapter
 
 ADAPTER_REGISTRY: dict[str, type[BaseAssetAdapter]] = {
     "idle_balances": IdleBalancesAdapter,
@@ -16,6 +17,8 @@ ADAPTER_REGISTRY: dict[str, type[BaseAssetAdapter]] = {
     "pendle": PendleAdapter,
     "erc4626": ERC4626VaultAdapter,
     "snusd": SNUSDAdapter,
+    "uniswap_v3": UniswapV3Adapter,
+    "uniswap_v4": UniswapV4Adapter,
 }
 
 ASSET_ADAPTERS: list[type[BaseAssetAdapter]] = list(ADAPTER_REGISTRY.values())
@@ -52,5 +55,7 @@ __all__ = [
     "SNUSDAdapter",
     "StrETHAdapter",
     "StakeWiseAdapter",
+    "UniswapV3Adapter",
+    "UniswapV4Adapter",
     "get_adapter_class",
 ]

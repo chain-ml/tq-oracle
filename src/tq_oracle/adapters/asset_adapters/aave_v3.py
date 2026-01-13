@@ -233,7 +233,7 @@ class AaveV3Adapter(BaseAssetAdapter):
             )
             raise
 
-    async def fetch_assets(self, subvault_address: str) -> list[AssetData]:
+    async def fetch_assets(self, subvault_address: str, previous_assets: list[AssetData] | None = None) -> list[AssetData]:
         """Fetch Aave V3 positions for a specific subvault.
 
         This method:

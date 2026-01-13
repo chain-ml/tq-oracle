@@ -102,6 +102,25 @@ class SNUSDAdapterSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class UniswapV3AdapterSettings(BaseModel):
+    """Configuration options for Uniswap V3 adapter defaults."""
+
+    position_manager: str | None = None  # Defaults to mainnet if not provided
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class UniswapV4AdapterSettings(BaseModel):
+    """Configuration options for Uniswap V4 adapter defaults."""
+
+    position_manager: str | None = None  # Required for V4
+    pool_manager: str | None = None  # Defaults to mainnet if not provided
+    pools: list[dict[str, Any]] = Field(default_factory=list)
+    # pools structure: [{ "token0": "0x...", "token1": "0x...", "fee": 3000, "tick_spacing": 60, "hook": "0x..." }]
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class AdapterSettings(BaseModel):
     stakewise: StakewiseAdapterSettings = Field(
         default_factory=StakewiseAdapterSettings
@@ -113,6 +132,12 @@ class AdapterSettings(BaseModel):
     pendle: PendleAdapterSettings = Field(default_factory=PendleAdapterSettings)
     erc4626: ERC4626AdapterSettings = Field(default_factory=ERC4626AdapterSettings)
     snusd: SNUSDAdapterSettings = Field(default_factory=SNUSDAdapterSettings)
+    uniswap_v3: UniswapV3AdapterSettings = Field(
+        default_factory=UniswapV3AdapterSettings
+    )
+    uniswap_v4: UniswapV4AdapterSettings = Field(
+        default_factory=UniswapV4AdapterSettings
+    )
 
     model_config = ConfigDict(extra="ignore")
 
