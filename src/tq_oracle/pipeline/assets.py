@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 
 from ..abi import fetch_subvault_addresses
-from ..adapters.asset_adapters import get_adapter_class
+from ..adapters.asset_adapters import get_adapter_class, parse_adapter_name
 from ..adapters.asset_adapters.base import AssetData
 from ..adapters.asset_adapters.idle_balances import IdleBalancesAdapter
 from ..adapters.asset_adapters.stakewise import StakeWiseAdapter
@@ -197,7 +197,12 @@ async def collect_assets(ctx: PipelineContext) -> None:
     def create_adapter_task(
         subvault_addr: str, adapter_name: str
     ) -> tuple[str, Any, str] | None:
-        """Create an adapter instance for the given subvault and adapter name."""
+        """Create an adapter instance for the given subvault and adapter name.
+
+        Supports instance names like 'aave_v3.spark' for multi-instance adapters.
+        """
+        # Parse adapter name to extract base name and optional instance name
+        base_name, instance_name = parse_adapter_name(adapter_name)
         adapter_class = get_adapter_class(adapter_name)
 
         adapter_overrides: dict[str, Any] = {}
@@ -205,9 +210,12 @@ async def collect_assets(ctx: PipelineContext) -> None:
             "adapter_overrides", {}
         )
         if isinstance(overrides_config, dict):
+            # Check for overrides using full name first, then base name
             candidate = overrides_config.get(adapter_name)
             if candidate is None:
                 candidate = overrides_config.get(adapter_name.lower())
+            if candidate is None:
+                candidate = overrides_config.get(base_name)
             if isinstance(candidate, dict):
                 adapter_overrides = candidate
             elif candidate is not None:
@@ -224,7 +232,23 @@ async def collect_assets(ctx: PipelineContext) -> None:
                 overrides_config,
             )
 
-        defaults = adapter_defaults.get(adapter_name.lower(), {})
+        # For multi-instance adapters, get config for the specific instance
+        if base_name == "aave_v3":
+            # Get instance config (or first/default if no instance name)
+            instance_config = s.adapters.get_aave_v3_config(instance_name)
+            if instance_name and instance_config is None:
+                raise ValueError(
+                    f"No configuration found for adapter instance '{adapter_name}'. "
+                    f"Define [[adapters.aave_v3]] with name = \"{instance_name}\" in your config."
+                )
+            if instance_config:
+                # Use instance-specific config as defaults
+                defaults = _sanitize_adapter_kwargs(instance_config.model_dump(exclude_none=True))
+            else:
+                defaults = adapter_defaults.get(base_name, {})
+        else:
+            defaults = adapter_defaults.get(base_name, {})
+
         adapter_kwargs = _sanitize_adapter_kwargs({**defaults, **adapter_overrides})
 
         if adapter_kwargs:
@@ -233,9 +257,10 @@ async def collect_assets(ctx: PipelineContext) -> None:
             adapter = adapter_class(s)
 
         log.debug(
-            "Subvault %s → additional adapter: %s",
+            "Subvault %s → additional adapter: %s%s",
             subvault_addr,
             adapter_name,
+            f" (instance: {instance_name})" if instance_name else "",
         )
         return (subvault_addr, adapter, adapter_name)
 

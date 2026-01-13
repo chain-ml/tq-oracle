@@ -22,6 +22,8 @@ from eth_utils import keccak
 from web3 import Web3
 from web3.exceptions import ProviderConnectionError
 
+from ....abi import load_uniswap_v4_position_manager_abi, load_uniswap_v4_state_view_abi
+from ....constants import ETH_MAINNET_ASSETS, NATIVE_ETH_ADDRESS
 from ....logger import get_logger
 from ..base import AssetData, BaseAssetAdapter
 
@@ -32,71 +34,18 @@ logger = get_logger(__name__)
 
 
 class UniswapV4Adapter(BaseAssetAdapter):
+    """Adapter for Uniswap V4 LP positions.
+
+    Discovers positions via The Graph subgraph and calculates withdrawable amounts
+    using concentrated liquidity math.
+    """
+
     # Mainnet addresses
     DEFAULT_POOL_MANAGER = "0x000000000004444c5dc75cb358380d2e3de08a90"
     DEFAULT_STATE_VIEW = "0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227"  # StateView lens
 
     # Uniswap v4 subgraph (The Graph Network) – requires API key
-    # You can override this via env if you want.
-    DEFAULT_SUBGRAPH_ID = "DiYPVdygkfjDWhbxGSqAQxwBKmfKnkWQojqeM2rkLb3G"  # "uniswap-v4-ethereum" explorer
-
-    # PositionManager ABI (minimal reads)
-    _POSITION_MANAGER_ABI = [
-        # ERC721 ownerOf (preflight existence/ownership check)
-        {
-            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-            "name": "ownerOf",
-            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        # Core read used in Uniswap docs
-        {
-            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-            "name": "getPoolAndPositionInfo",
-            "outputs": [
-                {
-                    "components": [
-                        {"internalType": "address", "name": "currency0", "type": "address"},
-                        {"internalType": "address", "name": "currency1", "type": "address"},
-                        {"internalType": "uint24", "name": "fee", "type": "uint24"},
-                        {"internalType": "int24", "name": "tickSpacing", "type": "int24"},
-                        {"internalType": "address", "name": "hooks", "type": "address"},
-                    ],
-                    "internalType": "struct PoolKey",
-                    "name": "poolKey",
-                    "type": "tuple",
-                },
-                {"internalType": "uint256", "name": "info", "type": "uint256"},
-            ],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        # Liquidity convenience getter
-        {
-            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-            "name": "getPositionLiquidity",
-            "outputs": [{"internalType": "uint128", "name": "", "type": "uint128"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-    ]
-
-    # StateView ABI (offchain lens for PoolManager state)
-    _STATE_VIEW_ABI = [
-        {
-            "inputs": [{"internalType": "bytes32", "name": "poolId", "type": "bytes32"}],
-            "name": "getSlot0",
-            "outputs": [
-                {"internalType": "uint160", "name": "sqrtPriceX96", "type": "uint160"},
-                {"internalType": "int24", "name": "tick", "type": "int24"},
-                {"internalType": "uint24", "name": "protocolFee", "type": "uint24"},
-                {"internalType": "uint24", "name": "lpFee", "type": "uint24"},
-            ],
-            "stateMutability": "view",
-            "type": "function",
-        },
-    ]
+    DEFAULT_SUBGRAPH_ID = "DiYPVdygkfjDWhbxGSqAQxwBKmfKnkWQojqeM2rkLb3G"
 
     def __init__(self, config: OracleSettings, **overrides: Any):
         super().__init__(config)
@@ -136,6 +85,14 @@ class UniswapV4Adapter(BaseAssetAdapter):
             "TQ_ORACLE_GRAPH_API_KEY"
         )
 
+        # CRITICAL: Graph API key is required for Uniswap V4 position discovery
+        if not self.graph_api_key:
+            raise ValueError(
+                "Uniswap V4 adapter requires TQ_ORACLE_GRAPH_API_KEY environment variable. "
+                "The Graph API is required to discover V4 positions (ERC721Enumerable not supported). "
+                "Get an API key at https://thegraph.com/studio/"
+            )
+
         logger.debug(
             "Uniswap V4 adapter initialized: position_manager=%s pool_manager=%s state_view=%s subgraph_id=%s",
             self.position_manager,
@@ -166,14 +123,28 @@ class UniswapV4Adapter(BaseAssetAdapter):
     def _pm(self):
         return self.w3.eth.contract(
             address=Web3.to_checksum_address(self.position_manager),
-            abi=self._POSITION_MANAGER_ABI,
+            abi=load_uniswap_v4_position_manager_abi(),
         )
 
-    def _state_view(self):
+    def _state_view_contract(self):
         return self.w3.eth.contract(
             address=Web3.to_checksum_address(self.state_view),
-            abi=self._STATE_VIEW_ABI,
+            abi=load_uniswap_v4_state_view_abi(),
         )
+
+    def _normalize_currency(self, currency: str) -> str:
+        """Convert native ETH (address(0)) to WETH for pricing.
+
+        Uniswap V4 represents native ETH as address(0). For pricing purposes,
+        we convert this to WETH since price adapters work with ERC20 tokens.
+        """
+        if currency.lower() == NATIVE_ETH_ADDRESS.lower():
+            weth = ETH_MAINNET_ASSETS.get("WETH")
+            if weth:
+                logger.debug("Converting native ETH (address(0)) to WETH: %s", weth)
+                return weth
+            logger.warning("WETH address not found in ETH_MAINNET_ASSETS, using native ETH address")
+        return currency
 
     def _graph_url(self) -> str:
         if not self.graph_api_key:
@@ -280,7 +251,7 @@ class UniswapV4Adapter(BaseAssetAdapter):
 
     async def _get_slot0(self, pool_id: bytes) -> tuple[int, int]:
         slot0 = await self._rpc(
-            self._state_view().functions.getSlot0(pool_id).call,
+            self._state_view_contract().functions.getSlot0(pool_id).call,
             block_identifier=self.block_number,
         )
         sqrt_price_x96 = int(slot0[0])
@@ -446,11 +417,15 @@ class UniswapV4Adapter(BaseAssetAdapter):
                 pool_id.hex(),
             )
 
+            # Convert native ETH (address(0)) to WETH for pricing
+            asset0 = self._normalize_currency(currency0)
+            asset1 = self._normalize_currency(currency1)
+
             out: list[AssetData] = []
             if amount0 > 0:
-                out.append(AssetData(asset_address=Web3.to_checksum_address(currency0), amount=int(amount0)))
+                out.append(AssetData(asset_address=Web3.to_checksum_address(asset0), amount=int(amount0)))
             if amount1 > 0:
-                out.append(AssetData(asset_address=Web3.to_checksum_address(currency1), amount=int(amount1)))
+                out.append(AssetData(asset_address=Web3.to_checksum_address(asset1), amount=int(amount1)))
             return out
 
         except Exception as e:
@@ -466,12 +441,16 @@ class UniswapV4Adapter(BaseAssetAdapter):
             logger.warning("Uniswap V4: position_manager not configured, cannot fetch positions")
             return previous_assets if previous_assets else []
 
-        # Discover tokenIds via subgraph
+        # Discover tokenIds via subgraph - MUST succeed or fail the pipeline
         try:
             token_ids = await self._fetch_token_ids_from_subgraph(subvault_address)
         except Exception as e:
             logger.error("Uniswap V4: subgraph tokenId discovery failed for %s: %s", subvault_address, e)
-            return previous_assets if previous_assets else []
+            raise ValueError(
+                f"Uniswap V4 subgraph query failed: {e}. "
+                "Check that TQ_ORACLE_GRAPH_API_KEY is set correctly. "
+                "Get an API key at https://thegraph.com/studio/"
+            ) from e
 
         if not token_ids:
             logger.debug("Uniswap V4: no positions found for subvault %s", subvault_address)
