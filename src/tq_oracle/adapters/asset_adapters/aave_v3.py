@@ -53,6 +53,29 @@ class AaveV3Adapter(BaseAssetAdapter):
 
         logger.info("Initializing Aave V3 adapter...")
 
+        # Load adapter configuration with overrides
+        # Note: adapter_config may be a list when using multi-instance configuration
+        # In that case, instance-specific config is passed via overrides from pipeline
+        logger.debug("Loading adapter configuration (overrides: %s)", bool(overrides))
+        raw_config = config.adapters.aave_v3
+
+        # Handle list config (multi-instance) - get first or use empty config
+        if isinstance(raw_config, list):
+            # When using multi-instance, config is passed via overrides
+            # Use first config as fallback, or empty config if list is empty
+            from ...settings import AaveV3AdapterSettings
+
+            adapter_config = raw_config[0] if raw_config else AaveV3AdapterSettings()
+            logger.debug(
+                "Multi-instance config detected, using overrides or first config"
+            )
+        else:
+            adapter_config = raw_config
+
+        # Instance name for multi-pool tracking - set early so it's always available
+        self.instance_name = overrides.get("name", adapter_config.name)
+        logger.debug("Instance name: %s", self.instance_name)
+
         # Skip adapter if not on mainnet (for now)
         self._skip = config.network != Network.MAINNET
         if self._skip:
@@ -96,25 +119,6 @@ class AaveV3Adapter(BaseAssetAdapter):
             self._rpc_jitter,
         )
 
-        # Load adapter configuration with overrides
-        # Note: adapter_config may be a list when using multi-instance configuration
-        # In that case, instance-specific config is passed via overrides from pipeline
-        logger.debug("Loading adapter configuration (overrides: %s)", bool(overrides))
-        raw_config = config.adapters.aave_v3
-
-        # Handle list config (multi-instance) - get first or use empty config
-        if isinstance(raw_config, list):
-            # When using multi-instance, config is passed via overrides
-            # Use first config as fallback, or empty config if list is empty
-            from ...settings import AaveV3AdapterSettings
-
-            adapter_config = raw_config[0] if raw_config else AaveV3AdapterSettings()
-            logger.debug(
-                "Multi-instance config detected, using overrides or first config"
-            )
-        else:
-            adapter_config = raw_config
-
         # Pool address
         self.pool_address = overrides.get(
             "pool_address", adapter_config.pool_address or AAVE_V3_POOL_MAINNET
@@ -148,10 +152,6 @@ class AaveV3Adapter(BaseAssetAdapter):
             "base_asset_type", adapter_config.base_asset_type
         )
         logger.debug("Base asset type: %s", self.base_asset_type)
-
-        # Instance name for multi-pool tracking
-        self.instance_name = overrides.get("name", adapter_config.name)
-        logger.debug("Instance name: %s", self.instance_name)
 
         logger.info(
             "Aave V3 adapter initialization complete: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s, instance=%s",
