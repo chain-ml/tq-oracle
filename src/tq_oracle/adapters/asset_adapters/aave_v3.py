@@ -107,8 +107,11 @@ class AaveV3Adapter(BaseAssetAdapter):
             # When using multi-instance, config is passed via overrides
             # Use first config as fallback, or empty config if list is empty
             from ...settings import AaveV3AdapterSettings
+
             adapter_config = raw_config[0] if raw_config else AaveV3AdapterSettings()
-            logger.debug("Multi-instance config detected, using overrides or first config")
+            logger.debug(
+                "Multi-instance config detected, using overrides or first config"
+            )
         else:
             adapter_config = raw_config
 
@@ -253,7 +256,9 @@ class AaveV3Adapter(BaseAssetAdapter):
             )
             raise
 
-    async def fetch_assets(self, subvault_address: str, previous_assets: list[AssetData] | None = None) -> list[AssetData]:
+    async def fetch_assets(
+        self, subvault_address: str, previous_assets: list[AssetData] | None = None
+    ) -> list[AssetData]:
         """Fetch Aave V3 positions for a specific subvault.
 
         This method:

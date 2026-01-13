@@ -70,7 +70,9 @@ class UniswapV3Adapter(BaseAssetAdapter):
         },
         # Position details
         {
-            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+            "inputs": [
+                {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+            ],
             "name": "positions",
             "outputs": [
                 {"internalType": "uint96", "name": "nonce", "type": "uint96"},
@@ -102,11 +104,31 @@ class UniswapV3Adapter(BaseAssetAdapter):
             "inputs": [
                 {
                     "components": [
-                        {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
-                        {"internalType": "uint128", "name": "liquidity", "type": "uint128"},
-                        {"internalType": "uint256", "name": "amount0Min", "type": "uint256"},
-                        {"internalType": "uint256", "name": "amount1Min", "type": "uint256"},
-                        {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+                        {
+                            "internalType": "uint256",
+                            "name": "tokenId",
+                            "type": "uint256",
+                        },
+                        {
+                            "internalType": "uint128",
+                            "name": "liquidity",
+                            "type": "uint128",
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "amount0Min",
+                            "type": "uint256",
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "amount1Min",
+                            "type": "uint256",
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "deadline",
+                            "type": "uint256",
+                        },
                     ],
                     "internalType": "struct INonfungiblePositionManager.DecreaseLiquidityParams",
                     "name": "params",
@@ -131,7 +153,11 @@ class UniswapV3Adapter(BaseAssetAdapter):
             "outputs": [
                 {"internalType": "uint160", "name": "sqrtPriceX96", "type": "uint160"},
                 {"internalType": "int24", "name": "tick", "type": "int24"},
-                {"internalType": "uint16", "name": "observationIndex", "type": "uint16"},
+                {
+                    "internalType": "uint16",
+                    "name": "observationIndex",
+                    "type": "uint16",
+                },
                 {
                     "internalType": "uint16",
                     "name": "observationCardinality",
@@ -596,7 +622,9 @@ class UniswapV3Adapter(BaseAssetAdapter):
             logger.error("Failed to process Uniswap V3 position %d: %s", token_id, e)
             return []
 
-    async def fetch_assets(self, subvault_address: str, previous_assets: list[AssetData] | None = None) -> list[AssetData]:
+    async def fetch_assets(
+        self, subvault_address: str, previous_assets: list[AssetData] | None = None
+    ) -> list[AssetData]:
         """Fetch Uniswap V3 positions for a subvault.
 
         This method:

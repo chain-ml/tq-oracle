@@ -239,11 +239,13 @@ async def collect_assets(ctx: PipelineContext) -> None:
             if instance_name and instance_config is None:
                 raise ValueError(
                     f"No configuration found for adapter instance '{adapter_name}'. "
-                    f"Define [[adapters.aave_v3]] with name = \"{instance_name}\" in your config."
+                    f'Define [[adapters.aave_v3]] with name = "{instance_name}" in your config.'
                 )
             if instance_config:
                 # Use instance-specific config as defaults
-                defaults = _sanitize_adapter_kwargs(instance_config.model_dump(exclude_none=True))
+                defaults = _sanitize_adapter_kwargs(
+                    instance_config.model_dump(exclude_none=True)
+                )
             else:
                 defaults = adapter_defaults.get(base_name, {})
         else:
@@ -311,7 +313,9 @@ async def collect_assets(ctx: PipelineContext) -> None:
         for adapter, adapter_name in adapters:
             try:
                 # Pass previous adapter results to this adapter
-                new_assets = await adapter.fetch_assets(subvault_addr, accumulated_assets)
+                new_assets = await adapter.fetch_assets(
+                    subvault_addr, accumulated_assets
+                )
                 accumulated_assets = new_assets
                 log.debug(
                     "Adapter chain %s for %s: %s returned %d assets",
@@ -349,7 +353,9 @@ async def collect_assets(ctx: PipelineContext) -> None:
         (subvault_addr, None, f"adapter_chain_{len(adapters)}_adapters")
         for subvault_addr, adapters in subvault_adapter_chains.items()
     ]
-    _process_adapter_results(subvault_chain_task_info, per_subvault_results, asset_data, log)
+    _process_adapter_results(
+        subvault_chain_task_info, per_subvault_results, asset_data, log
+    )
 
     # Track which assets came from which subvault
     # Fetch per-subvault assets directly for breakdown
@@ -359,7 +365,9 @@ async def collect_assets(ctx: PipelineContext) -> None:
     log.debug(f"subvault_adapter_chains keys: {list(subvault_adapter_chains.keys())}")
     for subvault_addr in subvault_addresses:
         subvault_assets: list[AssetData] = []
-        log.debug(f"Processing subvault: {subvault_addr} (lowercased: {subvault_addr.lower()})")
+        log.debug(
+            f"Processing subvault: {subvault_addr} (lowercased: {subvault_addr.lower()})"
+        )
 
         # Idle balances
         if should_run_default_idle_balances and not get_subvault_config(
@@ -421,21 +429,35 @@ async def collect_assets(ctx: PipelineContext) -> None:
             log.debug(f"  Looking for {subvault_key} in chain keys: {chain_keys}")
             try:
                 chain_result_idx = chain_keys.index(subvault_key)
-                log.debug(f"  Found chain at index {chain_result_idx}, total results: {len(per_subvault_results)}")
+                log.debug(
+                    f"  Found chain at index {chain_result_idx}, total results: {len(per_subvault_results)}"
+                )
                 if chain_result_idx < len(per_subvault_results):
                     chain_result = per_subvault_results[chain_result_idx]
-                    if isinstance(chain_result, list) and not isinstance(chain_result, BaseException):
+                    if isinstance(chain_result, list) and not isinstance(
+                        chain_result, BaseException
+                    ):
                         if chain_result:
-                            log.info(f"  adapter_chain returned {len(chain_result)} assets for {subvault_addr}")
+                            log.info(
+                                f"  adapter_chain returned {len(chain_result)} assets for {subvault_addr}"
+                            )
                             for asset in chain_result:
-                                log.debug(f"    - {asset.asset_address}: {asset.amount}")
+                                log.debug(
+                                    f"    - {asset.asset_address}: {asset.amount}"
+                                )
                         else:
-                            log.debug(f"  adapter_chain returned empty list for {subvault_addr}")
+                            log.debug(
+                                f"  adapter_chain returned empty list for {subvault_addr}"
+                            )
                         subvault_assets.extend(chain_result)
                     else:
-                        log.warning(f"  adapter_chain result was not a list for {subvault_addr}: {type(chain_result)}")
+                        log.warning(
+                            f"  adapter_chain result was not a list for {subvault_addr}: {type(chain_result)}"
+                        )
                 else:
-                    log.warning(f"  Chain index {chain_result_idx} out of range for results length {len(per_subvault_results)}")
+                    log.warning(
+                        f"  Chain index {chain_result_idx} out of range for results length {len(per_subvault_results)}"
+                    )
             except ValueError as e:
                 log.error(f"  Failed to find {subvault_key} in chain keys: {e}")
         else:
@@ -446,18 +468,25 @@ async def collect_assets(ctx: PipelineContext) -> None:
     # Fetch assets for extra addresses (e.g., swap module)
     extra_addresses_assets: dict[str, list[AssetData]] = {}
     if should_run_default_idle_balances and idle_vault_adapter:
-        idle_config = s.adapters.idle_balances
-        extra_addrs = idle_vault_adapter._extra_addresses if hasattr(idle_vault_adapter, '_extra_addresses') else []
+        extra_addrs = (
+            idle_vault_adapter._extra_addresses
+            if hasattr(idle_vault_adapter, "_extra_addresses")
+            else []
+        )
         if extra_addrs:
             log.info("Fetching assets for %d extra addresses...", len(extra_addrs))
             for extra_addr in extra_addrs:
                 try:
                     extra_assets = await idle_vault_adapter.fetch_assets(extra_addr)
                     if extra_assets:
-                        log.info(f"  extra_address {extra_addr}: {len(extra_assets)} assets")
+                        log.info(
+                            f"  extra_address {extra_addr}: {len(extra_assets)} assets"
+                        )
                         extra_addresses_assets[extra_addr.lower()] = extra_assets
                 except Exception as e:
-                    log.error(f"  Failed to fetch assets for extra address {extra_addr}: {e}")
+                    log.error(
+                        f"  Failed to fetch assets for extra address {extra_addr}: {e}"
+                    )
 
     log.info("Computing aggregated assets...")
     aggregated = await compute_total_aggregated_assets(asset_data)

@@ -150,7 +150,9 @@ class AdapterSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    def get_aave_v3_config(self, instance_name: str | None = None) -> AaveV3AdapterSettings | None:
+    def get_aave_v3_config(
+        self, instance_name: str | None = None
+    ) -> AaveV3AdapterSettings | None:
         """Get Aave V3 config by instance name.
 
         Args:

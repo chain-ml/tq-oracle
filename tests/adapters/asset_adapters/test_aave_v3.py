@@ -696,6 +696,9 @@ class TestMultiInstanceConfig:
         aave = settings.get_aave_v3_config("aave")
         spark = settings.get_aave_v3_config("spark")
 
+        assert aave is not None
+        assert spark is not None
+
         # Pool addresses should be different
         assert aave.pool_address != spark.pool_address
 
@@ -786,7 +789,9 @@ class TestSparkIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_spark_balance_of_returns_integer(self, spark_adapter, subvault_address):
+    async def test_spark_balance_of_returns_integer(
+        self, spark_adapter, subvault_address
+    ):
         """Integration: Verify balance_of works with Spark tokens."""
         sp_dai = "0x4DEDf26112B3Ec8eC46e7E31EA5e123490B05B8B"
         balance = await spark_adapter._balance_of(sp_dai, subvault_address)

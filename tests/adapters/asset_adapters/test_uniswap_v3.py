@@ -251,7 +251,9 @@ class TestFetchAssets:
     """Tests for fetch_assets method."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_no_positions(self, mocker, mainnet_config, subvault_address):
+    async def test_returns_empty_when_no_positions(
+        self, mocker, mainnet_config, subvault_address
+    ):
         """Should return empty list when subvault has no positions."""
         adapter = UniswapV3Adapter(mainnet_config)
 
@@ -262,7 +264,9 @@ class TestFetchAssets:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_returns_asset_data_list(self, mocker, mainnet_config, subvault_address, weth_address, usdc_address):
+    async def test_returns_asset_data_list(
+        self, mocker, mainnet_config, subvault_address, weth_address, usdc_address
+    ):
         """Should return list of AssetData."""
         adapter = UniswapV3Adapter(mainnet_config)
 
@@ -284,13 +288,17 @@ class TestFetchAssets:
         assert all(isinstance(item, AssetData) for item in result)
 
     @pytest.mark.asyncio
-    async def test_aggregates_multiple_positions(self, mocker, mainnet_config, subvault_address, weth_address):
+    async def test_aggregates_multiple_positions(
+        self, mocker, mainnet_config, subvault_address, weth_address
+    ):
         """Should aggregate amounts from multiple positions."""
         adapter = UniswapV3Adapter(mainnet_config)
 
         # Mock 2 positions
         mocker.patch.object(adapter, "_get_position_count", return_value=2)
-        mocker.patch.object(adapter, "_get_position_id_by_index", side_effect=[100, 200])
+        mocker.patch.object(
+            adapter, "_get_position_id_by_index", side_effect=[100, 200]
+        )
 
         # Each position has 1 WETH
         async def mock_process(token_id, subvault):
@@ -306,7 +314,9 @@ class TestFetchAssets:
         assert result[0].amount == 2 * 10**18
 
     @pytest.mark.asyncio
-    async def test_passes_through_previous_assets(self, mocker, mainnet_config, subvault_address, weth_address, usdc_address):
+    async def test_passes_through_previous_assets(
+        self, mocker, mainnet_config, subvault_address, weth_address, usdc_address
+    ):
         """Should include previous_assets in results."""
         adapter = UniswapV3Adapter(mainnet_config)
 
@@ -336,7 +346,9 @@ class TestAddressHandling:
     """Tests for address checksumming and handling."""
 
     @pytest.mark.asyncio
-    async def test_returns_checksummed_addresses(self, mocker, mainnet_config, subvault_address):
+    async def test_returns_checksummed_addresses(
+        self, mocker, mainnet_config, subvault_address
+    ):
         """Returned asset addresses should be checksummed."""
         adapter = UniswapV3Adapter(mainnet_config)
 
@@ -393,7 +405,9 @@ class TestUniswapV3Integration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_fetch_assets_returns_valid_data(self, mainnet_config, subvault_address):
+    async def test_fetch_assets_returns_valid_data(
+        self, mainnet_config, subvault_address
+    ):
         """Integration: fetch_assets returns valid AssetData."""
         adapter = UniswapV3Adapter(mainnet_config)
         result = await adapter.fetch_assets(subvault_address)
@@ -417,7 +431,9 @@ class TestDecimalHandling:
     """Tests for correct decimal handling with different token pairs."""
 
     @pytest.mark.asyncio
-    async def test_weth_usdc_pair_decimals(self, mocker, mainnet_config, subvault_address, weth_address, usdc_address):
+    async def test_weth_usdc_pair_decimals(
+        self, mocker, mainnet_config, subvault_address, weth_address, usdc_address
+    ):
         """WETH (18 decimals) / USDC (6 decimals) pair handling."""
         adapter = UniswapV3Adapter(mainnet_config)
 
@@ -446,7 +462,9 @@ class TestDecimalHandling:
         assert usdc_result.amount == 3000 * 10**6
 
     @pytest.mark.asyncio
-    async def test_stablecoin_pair_6_decimals(self, mocker, mainnet_config, subvault_address, usdc_address, usdt_address):
+    async def test_stablecoin_pair_6_decimals(
+        self, mocker, mainnet_config, subvault_address, usdc_address, usdt_address
+    ):
         """USDC (6 decimals) / USDT (6 decimals) pair handling."""
         adapter = UniswapV3Adapter(mainnet_config)
 

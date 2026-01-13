@@ -144,7 +144,9 @@ class IdleBalancesAdapter(BaseAssetAdapter):
     def adapter_name(self) -> str:
         return "idle_balances"
 
-    async def fetch_assets(self, subvault_address: str, previous_assets: list[AssetData] | None = None) -> list[AssetData]:
+    async def fetch_assets(
+        self, subvault_address: str, previous_assets: list[AssetData] | None = None
+    ) -> list[AssetData]:
         """Fetch idle balances for the given subvault on the configured chain.
 
         Args:

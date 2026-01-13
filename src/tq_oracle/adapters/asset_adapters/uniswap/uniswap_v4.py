@@ -64,9 +64,7 @@ class UniswapV4Adapter(BaseAssetAdapter):
         adapter_config = config.adapters.uniswap_v4
 
         self.position_manager = (
-            overrides.get("position_manager")
-            or adapter_config.position_manager
-            or None
+            overrides.get("position_manager") or adapter_config.position_manager or None
         )
         self.pool_manager = (
             overrides.get("pool_manager")
@@ -143,7 +141,9 @@ class UniswapV4Adapter(BaseAssetAdapter):
             if weth:
                 logger.debug("Converting native ETH (address(0)) to WETH: %s", weth)
                 return weth
-            logger.warning("WETH address not found in ETH_MAINNET_ASSETS, using native ETH address")
+            logger.warning(
+                "WETH address not found in ETH_MAINNET_ASSETS, using native ETH address"
+            )
         return currency
 
     def _graph_url(self) -> str:
@@ -170,7 +170,10 @@ class UniswapV4Adapter(BaseAssetAdapter):
         skip = 0
 
         while True:
-            payload = {"query": query, "variables": {"owner": owner_lc, "first": first, "skip": skip}}
+            payload = {
+                "query": query,
+                "variables": {"owner": owner_lc, "first": first, "skip": skip},
+            }
             resp = await asyncio.to_thread(
                 requests.post,
                 self._graph_url(),
@@ -232,7 +235,9 @@ class UniswapV4Adapter(BaseAssetAdapter):
         # next 24 bits = tickUpper (int24)
         tick_lower_u = (info >> 8) & ((1 << 24) - 1)
         tick_upper_u = (info >> (8 + 24)) & ((1 << 24) - 1)
-        return self._sign_extend_int24(tick_lower_u), self._sign_extend_int24(tick_upper_u)
+        return self._sign_extend_int24(tick_lower_u), self._sign_extend_int24(
+            tick_upper_u
+        )
 
     def _pool_id_from_pool_key(self, pool_key: tuple) -> bytes:
         currency0, currency1, fee, tick_spacing, hooks = pool_key
@@ -347,7 +352,9 @@ class UniswapV4Adapter(BaseAssetAdapter):
         amount1 = self._get_amount1_delta(sqrt_lower, sqrt_price_x96, liquidity)
         return amount0, amount1
 
-    async def _process_position(self, token_id: int, subvault_address: str) -> list[AssetData]:
+    async def _process_position(
+        self, token_id: int, subvault_address: str
+    ) -> list[AssetData]:
         try:
             pm = self._pm()
 
@@ -423,9 +430,19 @@ class UniswapV4Adapter(BaseAssetAdapter):
 
             out: list[AssetData] = []
             if amount0 > 0:
-                out.append(AssetData(asset_address=Web3.to_checksum_address(asset0), amount=int(amount0)))
+                out.append(
+                    AssetData(
+                        asset_address=Web3.to_checksum_address(asset0),
+                        amount=int(amount0),
+                    )
+                )
             if amount1 > 0:
-                out.append(AssetData(asset_address=Web3.to_checksum_address(asset1), amount=int(amount1)))
+                out.append(
+                    AssetData(
+                        asset_address=Web3.to_checksum_address(asset1),
+                        amount=int(amount1),
+                    )
+                )
             return out
 
         except Exception as e:
@@ -438,14 +455,20 @@ class UniswapV4Adapter(BaseAssetAdapter):
         previous_assets: list[AssetData] | None = None,
     ) -> list[AssetData]:
         if not self.position_manager:
-            logger.warning("Uniswap V4: position_manager not configured, cannot fetch positions")
+            logger.warning(
+                "Uniswap V4: position_manager not configured, cannot fetch positions"
+            )
             return previous_assets if previous_assets else []
 
         # Discover tokenIds via subgraph - MUST succeed or fail the pipeline
         try:
             token_ids = await self._fetch_token_ids_from_subgraph(subvault_address)
         except Exception as e:
-            logger.error("Uniswap V4: subgraph tokenId discovery failed for %s: %s", subvault_address, e)
+            logger.error(
+                "Uniswap V4: subgraph tokenId discovery failed for %s: %s",
+                subvault_address,
+                e,
+            )
             raise ValueError(
                 f"Uniswap V4 subgraph query failed: {e}. "
                 "Check that TQ_ORACLE_GRAPH_API_KEY is set correctly. "
@@ -453,10 +476,16 @@ class UniswapV4Adapter(BaseAssetAdapter):
             ) from e
 
         if not token_ids:
-            logger.debug("Uniswap V4: no positions found for subvault %s", subvault_address)
+            logger.debug(
+                "Uniswap V4: no positions found for subvault %s", subvault_address
+            )
             return previous_assets if previous_assets else []
 
-        logger.info("Uniswap V4: found %d positions (subgraph) for subvault %s", len(token_ids), subvault_address)
+        logger.info(
+            "Uniswap V4: found %d positions (subgraph) for subvault %s",
+            len(token_ids),
+            subvault_address,
+        )
         for tid in token_ids[:10]:
             logger.debug("Uniswap V4: tokenId %d", tid)
         if len(token_ids) > 10:

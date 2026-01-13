@@ -74,6 +74,7 @@ class TestUniswapV4AdapterInit:
         with patch.dict("os.environ", {}, clear=True):
             # Remove any existing key
             import os
+
             if "TQ_ORACLE_GRAPH_API_KEY" in os.environ:
                 del os.environ["TQ_ORACLE_GRAPH_API_KEY"]
 
@@ -103,7 +104,9 @@ class TestUniswapV4AdapterInit:
         """Should use overridden pool manager when provided."""
         custom_pm = "0xCustomPoolManager123456789012345678901234"
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
-            adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234", pool_manager=custom_pm)
+            adapter = UniswapV4Adapter(
+                mainnet_config, position_manager="0x1234", pool_manager=custom_pm
+            )
             assert adapter.pool_manager == custom_pm
 
     def test_stores_block_number(self, mainnet_config, mock_graph_api_key):
@@ -127,21 +130,27 @@ class TestUniswapV4AdapterInit:
 class TestNativeEthHandling:
     """Tests for native ETH (address(0)) to WETH conversion."""
 
-    def test_normalize_currency_native_eth(self, mainnet_config, mock_graph_api_key, weth_address):
+    def test_normalize_currency_native_eth(
+        self, mainnet_config, mock_graph_api_key, weth_address
+    ):
         """Native ETH (address(0)) should be converted to WETH."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
             adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234")
             result = adapter._normalize_currency(NATIVE_ETH_ADDRESS)
             assert result == weth_address
 
-    def test_normalize_currency_preserves_erc20(self, mainnet_config, mock_graph_api_key, usdc_address):
+    def test_normalize_currency_preserves_erc20(
+        self, mainnet_config, mock_graph_api_key, usdc_address
+    ):
         """ERC20 addresses should be preserved."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
             adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234")
             result = adapter._normalize_currency(usdc_address)
             assert result == usdc_address
 
-    def test_normalize_currency_case_insensitive(self, mainnet_config, mock_graph_api_key, weth_address):
+    def test_normalize_currency_case_insensitive(
+        self, mainnet_config, mock_graph_api_key, weth_address
+    ):
         """Native ETH check should be case insensitive."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
             adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234")
@@ -301,7 +310,9 @@ class TestPackedInfoUnpacking:
 class TestPoolIdCalculation:
     """Tests for pool ID (keccak256 of encoded pool key) calculation."""
 
-    def test_pool_id_is_bytes32(self, mainnet_config, mock_graph_api_key, weth_address, usdc_address):
+    def test_pool_id_is_bytes32(
+        self, mainnet_config, mock_graph_api_key, weth_address, usdc_address
+    ):
         """Pool ID should be 32 bytes."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
             adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234")
@@ -316,7 +327,9 @@ class TestPoolIdCalculation:
             assert len(pool_id) == 32
             assert isinstance(pool_id, bytes)
 
-    def test_pool_id_deterministic(self, mainnet_config, mock_graph_api_key, weth_address, usdc_address):
+    def test_pool_id_deterministic(
+        self, mainnet_config, mock_graph_api_key, weth_address, usdc_address
+    ):
         """Same pool key should produce same pool ID."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
             adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234")
@@ -341,33 +354,51 @@ class TestFetchAssets:
     """Tests for fetch_assets method."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_no_position_manager(self, mocker, mainnet_config, subvault_address, mock_graph_api_key):
+    async def test_returns_empty_when_no_position_manager(
+        self, mocker, mainnet_config, subvault_address, mock_graph_api_key
+    ):
         """Should return empty list when position_manager is not configured."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
-            adapter = UniswapV4Adapter(mainnet_config, position_manager=None, graph_api_key=mock_graph_api_key)
+            adapter = UniswapV4Adapter(
+                mainnet_config, position_manager=None, graph_api_key=mock_graph_api_key
+            )
             adapter.position_manager = None  # Force to None after init
 
             result = await adapter.fetch_assets(subvault_address)
             assert result == []
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_no_positions(self, mocker, mainnet_config, subvault_address, mock_graph_api_key):
+    async def test_returns_empty_when_no_positions(
+        self, mocker, mainnet_config, subvault_address, mock_graph_api_key
+    ):
         """Should return empty list when subvault has no positions."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
             adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234")
 
-            mocker.patch.object(adapter, "_fetch_token_ids_from_subgraph", return_value=[])
+            mocker.patch.object(
+                adapter, "_fetch_token_ids_from_subgraph", return_value=[]
+            )
 
             result = await adapter.fetch_assets(subvault_address)
             assert result == []
 
     @pytest.mark.asyncio
-    async def test_passes_through_previous_assets(self, mocker, mainnet_config, subvault_address, weth_address, usdc_address, mock_graph_api_key):
+    async def test_passes_through_previous_assets(
+        self,
+        mocker,
+        mainnet_config,
+        subvault_address,
+        weth_address,
+        usdc_address,
+        mock_graph_api_key,
+    ):
         """Should include previous_assets in results."""
         with patch.dict("os.environ", {"TQ_ORACLE_GRAPH_API_KEY": mock_graph_api_key}):
             adapter = UniswapV4Adapter(mainnet_config, position_manager="0x1234")
 
-            mocker.patch.object(adapter, "_fetch_token_ids_from_subgraph", return_value=[100])
+            mocker.patch.object(
+                adapter, "_fetch_token_ids_from_subgraph", return_value=[100]
+            )
             mocker.patch.object(
                 adapter,
                 "_process_position",
@@ -375,7 +406,9 @@ class TestFetchAssets:
             )
 
             previous = [AssetData(asset_address=usdc_address, amount=1000 * 10**6)]
-            result = await adapter.fetch_assets(subvault_address, previous_assets=previous)
+            result = await adapter.fetch_assets(
+                subvault_address, previous_assets=previous
+            )
 
             addresses = [r.asset_address for r in result]
             assert usdc_address in addresses
@@ -432,9 +465,12 @@ class TestUniswapV4Integration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_fetch_token_ids_from_subgraph(self, mainnet_config, subvault_address):
+    async def test_fetch_token_ids_from_subgraph(
+        self, mainnet_config, subvault_address
+    ):
         """Integration: Fetch token IDs from The Graph subgraph."""
         import os
+
         api_key = os.getenv("TQ_ORACLE_GRAPH_API_KEY")
         if not api_key:
             pytest.skip("TQ_ORACLE_GRAPH_API_KEY not set")
@@ -451,9 +487,12 @@ class TestUniswapV4Integration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_fetch_assets_returns_valid_data(self, mainnet_config, subvault_address):
+    async def test_fetch_assets_returns_valid_data(
+        self, mainnet_config, subvault_address
+    ):
         """Integration: fetch_assets returns valid AssetData."""
         import os
+
         api_key = os.getenv("TQ_ORACLE_GRAPH_API_KEY")
         if not api_key:
             pytest.skip("TQ_ORACLE_GRAPH_API_KEY not set")

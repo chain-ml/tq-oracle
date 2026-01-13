@@ -23,6 +23,7 @@ class PipelineContext:
     final_prices: FinalPrices | None = None
     report: OracleReport | None = None
     supported_assets: set[str] | None = None
+    extra_addresses_assets: dict[str, list[AssetData]] | None = None
 
     @property
     def aggregated_required(self) -> AggregatedAssets:
