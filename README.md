@@ -13,7 +13,7 @@ For detailed system architecture and integration with Mellow Finance flexible-va
 You can run this CLI without any git cloning, directly with `uv`
 
 ```sh
-uvx --from git+https://github.com/Moonsong-Labs/tq-oracle.git tq-oracle --help   
+uvx --from git+https://github.com/chain-ml/tq-oracle.git tq-oracle --help   
 ```
 
 ## Installation

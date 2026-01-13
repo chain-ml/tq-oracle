@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from web3 import Web3
 
-from ...abi import load_erc20_abi
+from ...abi import load_erc20_abi, load_chainlink_feed_abi
 from ...constants import CHAINLINK_FEEDS
 from .base import BasePriceAdapter, PriceData
 
@@ -88,34 +88,6 @@ class ChainlinkAdapter(BasePriceAdapter):
         # Decimals cache
         self._decimals_cache: dict[str, int] = {}
 
-        # Chainlink Aggregator ABI (minimal)
-        self._feed_abi = [
-            {
-                "inputs": [],
-                "name": "latestRoundData",
-                "outputs": [
-                    {"internalType": "uint80", "name": "roundId", "type": "uint80"},
-                    {"internalType": "int256", "name": "answer", "type": "int256"},
-                    {"internalType": "uint256", "name": "startedAt", "type": "uint256"},
-                    {"internalType": "uint256", "name": "updatedAt", "type": "uint256"},
-                    {
-                        "internalType": "uint80",
-                        "name": "answeredInRound",
-                        "type": "uint80",
-                    },
-                ],
-                "stateMutability": "view",
-                "type": "function",
-            },
-            {
-                "inputs": [],
-                "name": "decimals",
-                "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
-                "stateMutability": "view",
-                "type": "function",
-            },
-        ]
-
         # Get ETH address for base asset validation
         eth_address = config.assets["ETH"]
         if eth_address is None:
@@ -174,7 +146,7 @@ class ChainlinkAdapter(BasePriceAdapter):
         """
         contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(self.eth_usd_feed),
-            abi=self._feed_abi,
+            abi=load_chainlink_feed_abi(),
         )
 
         # Get latest round data and decimals in parallel

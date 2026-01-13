@@ -59,9 +59,7 @@ class IdleBalancesAdapter(BaseAssetAdapter):
         extra_additional_raw = (
             idle_cfg.extra_tokens if config.additional_asset_support else {}
         )
-        non_tvl_raw = (
-            idle_cfg.non_tvl_tokens if config.additional_asset_support else {}
-        )
+        non_tvl_raw = idle_cfg.non_tvl_tokens if config.additional_asset_support else {}
 
         self._default_additional_assets: list[str] = [
             self.w3.to_checksum_address(address)
@@ -81,9 +79,7 @@ class IdleBalancesAdapter(BaseAssetAdapter):
             for symbol, address in non_tvl_raw.items()
             if address
         }
-        self._non_tvl_assets: list[str] = list(
-            self._non_tvl_assets_by_symbol.values()
-        )
+        self._non_tvl_assets: list[str] = list(self._non_tvl_assets_by_symbol.values())
         self._additional_assets: list[str] = [
             *self._default_additional_assets,
             *self._extra_additional_assets,

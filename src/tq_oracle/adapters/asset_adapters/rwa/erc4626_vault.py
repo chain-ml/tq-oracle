@@ -16,7 +16,7 @@ import backoff
 from web3 import Web3
 from web3.exceptions import ProviderConnectionError
 
-from ....abi import load_erc20_abi
+from ....abi import load_erc20_abi, load_erc4626_abi
 from ....logger import get_logger
 from ..base import AssetData, BaseAssetAdapter
 
@@ -42,24 +42,6 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
     vault_token = "0x..."  # ERC4626 vault token address
     underlying_asset = "0x..."  # Underlying asset address
     """
-
-    # ERC4626 ABI - minimal interface for what we need
-    _VAULT_ABI = [
-        {
-            "inputs": [{"internalType": "uint256", "name": "shares", "type": "uint256"}],
-            "name": "convertToAssets",
-            "outputs": [{"internalType": "uint256", "name": "assets", "type": "uint256"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        {
-            "inputs": [],
-            "name": "asset",
-            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-    ]
 
     def __init__(self, config: OracleSettings, **overrides):
         """Initialize ERC4626 vault adapter.
@@ -151,7 +133,7 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(vault_token),
-            abi=self._VAULT_ABI,
+            abi=load_erc4626_abi(),
         )
         assets = await self._rpc(
             contract.functions.convertToAssets(shares).call,
@@ -170,7 +152,7 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
         """
         contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(vault_token),
-            abi=self._VAULT_ABI,
+            abi=load_erc4626_abi(),
         )
         asset = await self._rpc(
             contract.functions.asset().call,
@@ -200,7 +182,9 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
         # Get vault token balance
         vault_balance = await self._balance_of(vault_token, subvault_address)
         if vault_balance == 0:
-            logger.debug("ERC4626 %s: zero balance for %s", vault_name, subvault_address)
+            logger.debug(
+                "ERC4626 %s: zero balance for %s", vault_name, subvault_address
+            )
             return []
 
         # Convert to underlying assets

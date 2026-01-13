@@ -89,8 +89,12 @@ class AaveV3Adapter(BaseAssetAdapter):
         self._rpc_sem = asyncio.Semaphore(config.rpc_max_concurrent_calls)
         self._rpc_delay = config.rpc_delay
         self._rpc_jitter = config.rpc_jitter
-        logger.debug("RPC throttling configured: max_concurrent=%d, delay=%s, jitter=%s",
-                     config.rpc_max_concurrent_calls, self._rpc_delay, self._rpc_jitter)
+        logger.debug(
+            "RPC throttling configured: max_concurrent=%d, delay=%s, jitter=%s",
+            config.rpc_max_concurrent_calls,
+            self._rpc_delay,
+            self._rpc_jitter,
+        )
 
         # Load adapter configuration with overrides
         logger.debug("Loading adapter configuration (overrides: %s)", bool(overrides))
@@ -202,13 +206,17 @@ class AaveV3Adapter(BaseAssetAdapter):
             Underlying asset address (e.g., WETH, USDC)
         """
         try:
-            logger.debug("Querying underlying asset for token: %s", atoken_or_debt_token)
+            logger.debug(
+                "Querying underlying asset for token: %s", atoken_or_debt_token
+            )
             # Aave V3 aTokens and debt tokens have UNDERLYING_ASSET_ADDRESS() function
             abi = [
                 {
                     "inputs": [],
                     "name": "UNDERLYING_ASSET_ADDRESS",
-                    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+                    "outputs": [
+                        {"internalType": "address", "name": "", "type": "address"}
+                    ],
                     "stateMutability": "view",
                     "type": "function",
                 }
@@ -280,7 +288,10 @@ class AaveV3Adapter(BaseAssetAdapter):
                     ]
                 ),
             )
-            logger.debug("Successfully fetched %d supply balances and underlyings", len(supply_balances))
+            logger.debug(
+                "Successfully fetched %d supply balances and underlyings",
+                len(supply_balances),
+            )
         except Exception as e:
             logger.error(
                 "Failed to fetch supply positions: %s (type: %s)",
