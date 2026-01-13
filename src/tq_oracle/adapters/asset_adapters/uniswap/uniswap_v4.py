@@ -1,26 +1,24 @@
 """Uniswap V4 LP position adapter.
 
 This adapter handles Uniswap V4 positions by:
-1. Enumerating all position NFT IDs owned by a subvault
-2. Fetching position details (poolKey with hook, token0, token1, liquidity)
-3. Calculating withdrawable amounts for both tokens
-4. Returning both token amounts for pricing pipeline
-
-Uniswap V4 uses PoolKeys which include:
-- currency0 (token0)
-- currency1 (token1)
-- fee
-- tickSpacing
-- hooks (hook contract address)
+1. Discovering PositionManager tokenIds owned by a subvault via the Uniswap v4 subgraph
+2. Fetching poolKey + packed position info via PositionManager.getPoolAndPositionInfo(tokenId)
+3. Fetching liquidity via PositionManager.getPositionLiquidity(tokenId)
+4. Reading slot0 via StateView.getSlot0(poolId) where poolId = keccak256(abi.encode(poolKey))
+5. Calculating withdrawable amounts for both tokens (using V3-style concentrated liquidity math)
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import backoff
+import requests
+from eth_abi import encode as abi_encode
+from eth_utils import keccak
 from web3 import Web3
 from web3.exceptions import ProviderConnectionError
 
@@ -34,133 +32,49 @@ logger = get_logger(__name__)
 
 
 class UniswapV4Adapter(BaseAssetAdapter):
-    """
-    Adapter for Uniswap V4 positions.
-
-    This adapter:
-    - Enumerates position NFT IDs owned by subvault (via ERC721Enumerable)
-    - Queries position details for each NFT (including hook address)
-    - Calculates token0 and token1 amounts withdrawable
-    - Returns both tokens for pricing pipeline
-
-    Configuration via TOML:
-    [adapters.uniswap_v4]
-    position_manager = "0x..."  # V4 PositionManager address
-    pool_manager = "0x000000000004444c5dc75cb358380d2e3de08a90"  # V4 PoolManager
-
-    # Configure pools to track with their hooks
-    [[adapters.uniswap_v4.pools]]
-    token0 = "0x..."
-    token1 = "0x..."
-    fee = 3000
-    tick_spacing = 60
-    hook = "0x..."  # Hook contract address (or 0x0 for no hook)
-
-    [[subvault_adapters]]
-    subvault_address = "0x..."
-    additional_adapters = ["uniswap_v4"]
-    """
-
     # Mainnet addresses
     DEFAULT_POOL_MANAGER = "0x000000000004444c5dc75cb358380d2e3de08a90"
+    DEFAULT_STATE_VIEW = "0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227"  # StateView lens
 
-    # Minimal ABI for PositionManager (V4)
+    # Uniswap v4 subgraph (The Graph Network) – requires API key
+    # You can override this via env if you want.
+    DEFAULT_SUBGRAPH_ID = "DiYPVdygkfjDWhbxGSqAQxwBKmfKnkWQojqeM2rkLb3G"  # "uniswap-v4-ethereum" explorer
+
+    # PositionManager ABI (minimal reads)
     _POSITION_MANAGER_ABI = [
-        # ERC721Enumerable interface
-        {
-            "inputs": [{"internalType": "address", "name": "owner", "type": "address"}],
-            "name": "balanceOf",
-            "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        {
-            "inputs": [
-                {"internalType": "address", "name": "owner", "type": "address"},
-                {"internalType": "uint256", "name": "index", "type": "uint256"},
-            ],
-            "name": "tokenOfOwnerByIndex",
-            "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        # Position info (V4 specific)
+        # ERC721 ownerOf (preflight existence/ownership check)
         {
             "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-            "name": "getPositionInfo",
+            "name": "ownerOf",
+            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+            "stateMutability": "view",
+            "type": "function",
+        },
+        # Core read used in Uniswap docs
+        {
+            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+            "name": "getPoolAndPositionInfo",
             "outputs": [
                 {
                     "components": [
-                        {
-                            "components": [
-                                {
-                                    "internalType": "Currency",
-                                    "name": "currency0",
-                                    "type": "address",
-                                },
-                                {
-                                    "internalType": "Currency",
-                                    "name": "currency1",
-                                    "type": "address",
-                                },
-                                {"internalType": "uint24", "name": "fee", "type": "uint24"},
-                                {
-                                    "internalType": "int24",
-                                    "name": "tickSpacing",
-                                    "type": "int24",
-                                },
-                                {
-                                    "internalType": "contract IHooks",
-                                    "name": "hooks",
-                                    "type": "address",
-                                },
-                            ],
-                            "internalType": "struct PoolKey",
-                            "name": "poolKey",
-                            "type": "tuple",
-                        },
-                        {"internalType": "int24", "name": "tickLower", "type": "int24"},
-                        {"internalType": "int24", "name": "tickUpper", "type": "int24"},
-                    ],
-                    "internalType": "struct PositionInfo",
-                    "name": "",
-                    "type": "tuple",
-                }
-            ],
-            "stateMutability": "view",
-            "type": "function",
-        },
-        # Get liquidity for position
-        {
-            "inputs": [
-                {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
-                {
-                    "components": [
-                        {
-                            "internalType": "Currency",
-                            "name": "currency0",
-                            "type": "address",
-                        },
-                        {
-                            "internalType": "Currency",
-                            "name": "currency1",
-                            "type": "address",
-                        },
+                        {"internalType": "address", "name": "currency0", "type": "address"},
+                        {"internalType": "address", "name": "currency1", "type": "address"},
                         {"internalType": "uint24", "name": "fee", "type": "uint24"},
                         {"internalType": "int24", "name": "tickSpacing", "type": "int24"},
-                        {
-                            "internalType": "contract IHooks",
-                            "name": "hooks",
-                            "type": "address",
-                        },
+                        {"internalType": "address", "name": "hooks", "type": "address"},
                     ],
                     "internalType": "struct PoolKey",
                     "name": "poolKey",
                     "type": "tuple",
                 },
-                {"internalType": "int24", "name": "tickLower", "type": "int24"},
-                {"internalType": "int24", "name": "tickUpper", "type": "int24"},
+                {"internalType": "uint256", "name": "info", "type": "uint256"},
             ],
+            "stateMutability": "view",
+            "type": "function",
+        },
+        # Liquidity convenience getter
+        {
+            "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
             "name": "getPositionLiquidity",
             "outputs": [{"internalType": "uint128", "name": "", "type": "uint128"}],
             "stateMutability": "view",
@@ -168,35 +82,10 @@ class UniswapV4Adapter(BaseAssetAdapter):
         },
     ]
 
-    # PoolManager ABI (V4)
-    _POOL_MANAGER_ABI = [
+    # StateView ABI (offchain lens for PoolManager state)
+    _STATE_VIEW_ABI = [
         {
-            "inputs": [
-                {
-                    "components": [
-                        {
-                            "internalType": "Currency",
-                            "name": "currency0",
-                            "type": "address",
-                        },
-                        {
-                            "internalType": "Currency",
-                            "name": "currency1",
-                            "type": "address",
-                        },
-                        {"internalType": "uint24", "name": "fee", "type": "uint24"},
-                        {"internalType": "int24", "name": "tickSpacing", "type": "int24"},
-                        {
-                            "internalType": "contract IHooks",
-                            "name": "hooks",
-                            "type": "address",
-                        },
-                    ],
-                    "internalType": "struct PoolKey",
-                    "name": "key",
-                    "type": "tuple",
-                }
-            ],
+            "inputs": [{"internalType": "bytes32", "name": "poolId", "type": "bytes32"}],
             "name": "getSlot0",
             "outputs": [
                 {"internalType": "uint160", "name": "sqrtPriceX96", "type": "uint160"},
@@ -209,19 +98,9 @@ class UniswapV4Adapter(BaseAssetAdapter):
         },
     ]
 
-    def __init__(self, config: OracleSettings, **overrides):
-        """Initialize Uniswap V4 adapter.
-
-        Args:
-            config: Oracle settings
-            **overrides: Optional overrides
-                - position_manager: Custom position manager address
-                - pool_manager: Custom pool manager address
-                - pools: List of pool configurations
-        """
+    def __init__(self, config: OracleSettings, **overrides: Any):
         super().__init__(config)
 
-        # Initialize Web3
         self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
         if not self.w3.is_connected():
             raise ConnectionError("Failed to connect to RPC for Uniswap V4 adapter")
@@ -233,48 +112,40 @@ class UniswapV4Adapter(BaseAssetAdapter):
         self._rpc_delay = config.rpc_delay
         self._rpc_jitter = config.rpc_jitter
 
-        # Load configuration
         adapter_config = config.adapters.uniswap_v4
 
-        # Position manager address
-        if "position_manager" in overrides:
-            self.position_manager = overrides["position_manager"]
-        elif adapter_config.position_manager:
-            self.position_manager = adapter_config.position_manager
-        else:
-            self.position_manager = None
+        self.position_manager = (
+            overrides.get("position_manager")
+            or adapter_config.position_manager
+            or None
+        )
+        self.pool_manager = (
+            overrides.get("pool_manager")
+            or adapter_config.pool_manager
+            or self.DEFAULT_POOL_MANAGER
+        )
 
-        # Pool manager address
-        if "pool_manager" in overrides:
-            self.pool_manager = overrides["pool_manager"]
-        elif adapter_config.pool_manager:
-            self.pool_manager = adapter_config.pool_manager
-        else:
-            self.pool_manager = self.DEFAULT_POOL_MANAGER
+        # StateView is not in your TOML today; we default to mainnet deployment.
+        self.state_view = overrides.get("state_view") or self.DEFAULT_STATE_VIEW
 
-        # Pool configurations
-        if "pools" in overrides:
-            self.pools = overrides["pools"]
-        elif adapter_config.pools:
-            self.pools = adapter_config.pools
-        else:
-            self.pools = []
-
-        if not self.position_manager:
-            logger.warning(
-                "Uniswap V4 position_manager not configured - adapter may not work correctly"
-            )
+        # Subgraph config
+        self.subgraph_id = overrides.get("subgraph_id") or os.getenv(
+            "TQ_ORACLE_UNISWAP_V4_SUBGRAPH_ID", self.DEFAULT_SUBGRAPH_ID
+        )
+        self.graph_api_key = overrides.get("graph_api_key") or os.getenv(
+            "TQ_ORACLE_GRAPH_API_KEY"
+        )
 
         logger.debug(
-            "Uniswap V4 adapter initialized: position_manager=%s, pool_manager=%s, %d pools configured",
+            "Uniswap V4 adapter initialized: position_manager=%s pool_manager=%s state_view=%s subgraph_id=%s",
             self.position_manager,
             self.pool_manager,
-            len(self.pools),
+            self.state_view,
+            self.subgraph_id,
         )
 
     @property
     def adapter_name(self) -> str:
-        """Return adapter identifier."""
         return "uniswap_v4"
 
     @backoff.on_exception(
@@ -284,7 +155,6 @@ class UniswapV4Adapter(BaseAssetAdapter):
         jitter=backoff.full_jitter,
     )
     async def _rpc(self, fn, *args, **kwargs):
-        """Execute RPC call with throttling and retry."""
         async with self._rpc_sem:
             try:
                 return await asyncio.to_thread(fn, *args, **kwargs)
@@ -293,194 +163,133 @@ class UniswapV4Adapter(BaseAssetAdapter):
                 if delay > 0:
                     await asyncio.sleep(delay)
 
-    async def _get_position_count(self, owner: str) -> int:
-        """Get number of position NFTs owned by address.
-
-        Args:
-            owner: Owner address
-
-        Returns:
-            Number of positions owned
-        """
-        if not self.position_manager:
-            return 0
-
-        contract = self.w3.eth.contract(
+    def _pm(self):
+        return self.w3.eth.contract(
             address=Web3.to_checksum_address(self.position_manager),
             abi=self._POSITION_MANAGER_ABI,
         )
-        balance = await self._rpc(
-            contract.functions.balanceOf(Web3.to_checksum_address(owner)).call,
-            block_identifier=self.block_number,
+
+    def _state_view(self):
+        return self.w3.eth.contract(
+            address=Web3.to_checksum_address(self.state_view),
+            abi=self._STATE_VIEW_ABI,
         )
-        return int(balance)
 
-    async def _get_position_id_by_index(self, owner: str, index: int) -> int:
-        """Get position NFT ID by index.
+    def _graph_url(self) -> str:
+        if not self.graph_api_key:
+            raise ValueError(
+                "Missing TQ_ORACLE_GRAPH_API_KEY (required to query Uniswap v4 subgraph tokenIds)"
+            )
+        return f"https://gateway.thegraph.com/api/{self.graph_api_key}/subgraphs/id/{self.subgraph_id}"
 
-        Args:
-            owner: Owner address
-            index: Index in owner's position array
+    async def _fetch_token_ids_from_subgraph(self, owner: str) -> list[int]:
+        # Uniswap subgraph schema uses Bytes for owner; typically lowercase hex with 0x prefix
+        owner_lc = owner.lower()
 
-        Returns:
-            Position NFT ID (token ID)
+        query = """
+        query Positions($owner: Bytes!, $first: Int!, $skip: Int!) {
+          positions(where: { owner: $owner }, first: $first, skip: $skip) {
+            id
+          }
+        }
         """
-        contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(self.position_manager),
-            abi=self._POSITION_MANAGER_ABI,
-        )
-        token_id = await self._rpc(
-            contract.functions.tokenOfOwnerByIndex(
-                Web3.to_checksum_address(owner), index
-            ).call,
+
+        token_ids: list[int] = []
+        first = 1000
+        skip = 0
+
+        while True:
+            payload = {"query": query, "variables": {"owner": owner_lc, "first": first, "skip": skip}}
+            resp = await asyncio.to_thread(
+                requests.post,
+                self._graph_url(),
+                json=payload,
+                timeout=20,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if "errors" in data:
+                raise ValueError(f"Subgraph query errors: {data['errors']}")
+
+            rows = data.get("data", {}).get("positions", []) or []
+            if not rows:
+                break
+
+            for row in rows:
+                # position.id is the NFT tokenId (string)
+                token_ids.append(int(row["id"]))
+
+            if len(rows) < first:
+                break
+            skip += first
+
+        return token_ids
+
+    async def _owner_of(self, token_id: int) -> str:
+        owner = await self._rpc(
+            self._pm().functions.ownerOf(token_id).call,
             block_identifier=self.block_number,
         )
-        return int(token_id)
+        return str(owner)
 
-    async def _get_position_info(self, token_id: int) -> dict:
-        """Get position info from NFT ID.
-
-        Args:
-            token_id: Position NFT ID
-
-        Returns:
-            Dict with position info including poolKey
-        """
-        contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(self.position_manager),
-            abi=self._POSITION_MANAGER_ABI,
-        )
-        position_info = await self._rpc(
-            contract.functions.getPositionInfo(token_id).call,
+    async def _get_pool_and_info(self, token_id: int):
+        pool_key, info = await self._rpc(
+            self._pm().functions.getPoolAndPositionInfo(token_id).call,
             block_identifier=self.block_number,
         )
+        # pool_key is (currency0, currency1, fee, tickSpacing, hooks)
+        return pool_key, int(info)
 
-        # Parse position info tuple
-        pool_key, tick_lower, tick_upper = position_info
+    async def _get_liquidity(self, token_id: int) -> int:
+        liq = await self._rpc(
+            self._pm().functions.getPositionLiquidity(token_id).call,
+            block_identifier=self.block_number,
+        )
+        return int(liq)
+
+    @staticmethod
+    def _sign_extend_int24(x: int) -> int:
+        x &= (1 << 24) - 1
+        if x & (1 << 23):
+            x -= 1 << 24
+        return x
+
+    def _unpack_ticks_from_info(self, info: int) -> tuple[int, int]:
+        # Packed PositionInfo:
+        # lowest 8 bits = flags (e.g. hasSubscriber)
+        # next 24 bits = tickLower (int24)
+        # next 24 bits = tickUpper (int24)
+        tick_lower_u = (info >> 8) & ((1 << 24) - 1)
+        tick_upper_u = (info >> (8 + 24)) & ((1 << 24) - 1)
+        return self._sign_extend_int24(tick_lower_u), self._sign_extend_int24(tick_upper_u)
+
+    def _pool_id_from_pool_key(self, pool_key: tuple) -> bytes:
         currency0, currency1, fee, tick_spacing, hooks = pool_key
 
-        return {
-            "currency0": currency0,
-            "currency1": currency1,
-            "fee": fee,
-            "tick_spacing": tick_spacing,
-            "hooks": hooks,
-            "tick_lower": tick_lower,
-            "tick_upper": tick_upper,
-        }
-
-    async def _get_position_liquidity(
-        self, token_id: int, pool_key: tuple, tick_lower: int, tick_upper: int
-    ) -> int:
-        """Get position liquidity.
-
-        Args:
-            token_id: Position NFT ID
-            pool_key: PoolKey tuple
-            tick_lower: Lower tick
-            tick_upper: Upper tick
-
-        Returns:
-            Position liquidity
-        """
-        contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(self.position_manager),
-            abi=self._POSITION_MANAGER_ABI,
+        enc = abi_encode(
+            ["address", "address", "uint24", "int24", "address"],
+            [
+                Web3.to_checksum_address(currency0),
+                Web3.to_checksum_address(currency1),
+                int(fee),
+                int(tick_spacing),
+                Web3.to_checksum_address(hooks),
+            ],
         )
-        liquidity = await self._rpc(
-            contract.functions.getPositionLiquidity(
-                token_id, pool_key, tick_lower, tick_upper
-            ).call,
-            block_identifier=self.block_number,
-        )
-        return int(liquidity)
+        return keccak(enc)
 
-    async def _get_pool_slot0(self, pool_key: tuple) -> tuple[int, int]:
-        """Get current pool state (sqrtPriceX96 and tick).
-
-        Args:
-            pool_key: PoolKey tuple
-
-        Returns:
-            Tuple of (sqrtPriceX96, tick)
-        """
-        contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(self.pool_manager),
-            abi=self._POOL_MANAGER_ABI,
-        )
+    async def _get_slot0(self, pool_id: bytes) -> tuple[int, int]:
         slot0 = await self._rpc(
-            contract.functions.getSlot0(pool_key).call,
+            self._state_view().functions.getSlot0(pool_id).call,
             block_identifier=self.block_number,
         )
         sqrt_price_x96 = int(slot0[0])
         tick = int(slot0[1])
         return sqrt_price_x96, tick
 
-    def _calculate_amounts_from_liquidity(
-        self,
-        liquidity: int,
-        sqrt_price_x96: int,
-        tick_lower: int,
-        tick_upper: int,
-        current_tick: int,
-    ) -> tuple[int, int]:
-        """Calculate token amounts from liquidity.
-
-        Uses the same Uniswap V3 math (V4 uses identical concentrated liquidity model).
-
-        Args:
-            liquidity: Position liquidity
-            sqrt_price_x96: Current pool sqrt price
-            tick_lower: Position lower tick
-            tick_upper: Position upper tick
-            current_tick: Current pool tick
-
-        Returns:
-            Tuple of (amount0, amount1)
-        """
-        if liquidity == 0:
-            return 0, 0
-
-        # Calculate sqrt prices at tick bounds
-        sqrt_price_lower_x96 = self._get_sqrt_ratio_at_tick(tick_lower)
-        sqrt_price_upper_x96 = self._get_sqrt_ratio_at_tick(tick_upper)
-
-        # Position is entirely in token1
-        if current_tick < tick_lower:
-            amount0 = self._get_amount0_delta(
-                sqrt_price_lower_x96, sqrt_price_upper_x96, liquidity
-            )
-            amount1 = 0
-
-        # Position is entirely in token0
-        elif current_tick >= tick_upper:
-            amount0 = 0
-            amount1 = self._get_amount1_delta(
-                sqrt_price_lower_x96, sqrt_price_upper_x96, liquidity
-            )
-
-        # Position is active (contains both tokens)
-        else:
-            amount0 = self._get_amount0_delta(
-                sqrt_price_x96, sqrt_price_upper_x96, liquidity
-            )
-            amount1 = self._get_amount1_delta(
-                sqrt_price_lower_x96, sqrt_price_x96, liquidity
-            )
-
-        return amount0, amount1
+    # --- math copied from your v3 adapter (unchanged) ---
 
     def _get_sqrt_ratio_at_tick(self, tick: int) -> int:
-        """Calculate sqrt price at tick.
-
-        Uses Uniswap V3/V4 tick math: price = 1.0001^tick
-
-        Args:
-            tick: Tick value
-
-        Returns:
-            Sqrt price in X96 format
-        """
         abs_tick = abs(tick)
         ratio = (
             0xFFFCB933BD6FAD37AA2D162D1A594001
@@ -532,195 +341,158 @@ class UniswapV4Adapter(BaseAssetAdapter):
 
         return (ratio >> 32) + (1 if ratio % (1 << 32) > 0 else 0)
 
-    def _get_amount0_delta(
-        self, sqrt_price_a_x96: int, sqrt_price_b_x96: int, liquidity: int
-    ) -> int:
-        """Calculate amount0 delta.
-
-        Args:
-            sqrt_price_a_x96: First sqrt price
-            sqrt_price_b_x96: Second sqrt price
-            liquidity: Liquidity amount
-
-        Returns:
-            Amount of token0
-        """
-        if sqrt_price_a_x96 > sqrt_price_b_x96:
-            sqrt_price_a_x96, sqrt_price_b_x96 = sqrt_price_b_x96, sqrt_price_a_x96
-
+    def _get_amount0_delta(self, sqrt_a: int, sqrt_b: int, liquidity: int) -> int:
+        if sqrt_a > sqrt_b:
+            sqrt_a, sqrt_b = sqrt_b, sqrt_a
         numerator1 = liquidity << 96
-        numerator2 = sqrt_price_b_x96 - sqrt_price_a_x96
+        numerator2 = sqrt_b - sqrt_a
+        return (numerator1 * numerator2) // sqrt_b // sqrt_a
 
-        return (numerator1 * numerator2) // sqrt_price_b_x96 // sqrt_price_a_x96
+    def _get_amount1_delta(self, sqrt_a: int, sqrt_b: int, liquidity: int) -> int:
+        if sqrt_a > sqrt_b:
+            sqrt_a, sqrt_b = sqrt_b, sqrt_a
+        return (liquidity * (sqrt_b - sqrt_a)) >> 96
 
-    def _get_amount1_delta(
-        self, sqrt_price_a_x96: int, sqrt_price_b_x96: int, liquidity: int
-    ) -> int:
-        """Calculate amount1 delta.
+    def _calculate_amounts_from_liquidity(
+        self,
+        liquidity: int,
+        sqrt_price_x96: int,
+        tick_lower: int,
+        tick_upper: int,
+        current_tick: int,
+    ) -> tuple[int, int]:
+        if liquidity == 0:
+            return 0, 0
 
-        Args:
-            sqrt_price_a_x96: First sqrt price
-            sqrt_price_b_x96: Second sqrt price
-            liquidity: Liquidity amount
+        sqrt_lower = self._get_sqrt_ratio_at_tick(tick_lower)
+        sqrt_upper = self._get_sqrt_ratio_at_tick(tick_upper)
 
-        Returns:
-            Amount of token1
-        """
-        if sqrt_price_a_x96 > sqrt_price_b_x96:
-            sqrt_price_a_x96, sqrt_price_b_x96 = sqrt_price_b_x96, sqrt_price_a_x96
+        if current_tick < tick_lower:
+            return self._get_amount0_delta(sqrt_lower, sqrt_upper, liquidity), 0
+        if current_tick >= tick_upper:
+            return 0, self._get_amount1_delta(sqrt_lower, sqrt_upper, liquidity)
 
-        return (liquidity * (sqrt_price_b_x96 - sqrt_price_a_x96)) >> 96
+        amount0 = self._get_amount0_delta(sqrt_price_x96, sqrt_upper, liquidity)
+        amount1 = self._get_amount1_delta(sqrt_lower, sqrt_price_x96, liquidity)
+        return amount0, amount1
 
-    async def _process_position(
-        self, token_id: int, subvault_address: str
-    ) -> list[AssetData]:
-        """Process a single Uniswap V4 position.
-
-        Args:
-            token_id: Position NFT ID
-            subvault_address: Subvault address
-
-        Returns:
-            List of AssetData for both tokens
-        """
+    async def _process_position(self, token_id: int, subvault_address: str) -> list[AssetData]:
         try:
-            # Get position info (includes poolKey with hook)
-            position = await self._get_position_info(token_id)
+            pm = self._pm()
 
-            # Build pool key tuple for contract calls
-            pool_key = (
-                Web3.to_checksum_address(position["currency0"]),
-                Web3.to_checksum_address(position["currency1"]),
-                position["fee"],
-                position["tick_spacing"],
-                Web3.to_checksum_address(position["hooks"]),
-            )
-
-            # Get position liquidity
-            liquidity = await self._get_position_liquidity(
-                token_id, pool_key, position["tick_lower"], position["tick_upper"]
-            )
-
-            if liquidity == 0:
-                logger.debug(
-                    "Uniswap V4 position %d: zero liquidity (possibly closed)", token_id
+            # 1) Preflight ownership (this is the quickest way to detect "wrong block" / non-existent token)
+            try:
+                owner = await self._rpc(
+                    pm.functions.ownerOf(token_id).call,
+                    block_identifier=self.block_number,
+                )
+            except Exception as e:
+                logger.error(
+                    "Uniswap V4 tokenId %d: ownerOf() reverted at block %s (likely token doesn't exist yet at that block): %s",
+                    token_id,
+                    str(self.block_number),
+                    e,
                 )
                 return []
 
-            # Get current pool state
-            sqrt_price_x96, current_tick = await self._get_pool_slot0(pool_key)
+            if owner.lower() != subvault_address.lower():
+                logger.debug(
+                    "Uniswap V4 tokenId %d: owner is %s (not %s) at block %s; skipping",
+                    token_id,
+                    owner,
+                    subvault_address,
+                    str(self.block_number),
+                )
+                return []
 
-            # Calculate token amounts
+            # 2) Pool key + packed info
+            pool_key, info = await self._get_pool_and_info(token_id)
+            tick_lower, tick_upper = self._unpack_ticks_from_info(info)
+
+            currency0, currency1, fee, tick_spacing, hooks = pool_key
+            pool_id = self._pool_id_from_pool_key(pool_key)
+
+            # 3) Liquidity
+            liquidity = await self._get_liquidity(token_id)
+            if liquidity == 0:
+                logger.debug("Uniswap V4 position %d: zero liquidity", token_id)
+                return []
+
+            # 4) Slot0 from StateView
+            sqrt_price_x96, current_tick = await self._get_slot0(pool_id)
+
+            # 5) Amounts
             amount0, amount1 = self._calculate_amounts_from_liquidity(
                 liquidity,
                 sqrt_price_x96,
-                position["tick_lower"],
-                position["tick_upper"],
+                tick_lower,
+                tick_upper,
                 current_tick,
             )
 
             logger.info(
-                "Uniswap V4 position %d: currency0=%s amount0=%d, currency1=%s amount1=%d, "
-                "fee=%d, liquidity=%d, tick_range=[%d, %d], current_tick=%d, hook=%s",
+                "Uniswap V4 position %d: c0=%s amt0=%d c1=%s amt1=%d fee=%d liq=%d ticks=[%d,%d] curTick=%d hooks=%s poolId=%s",
                 token_id,
-                position["currency0"],
+                currency0,
                 amount0,
-                position["currency1"],
+                currency1,
                 amount1,
-                position["fee"],
-                liquidity,
-                position["tick_lower"],
-                position["tick_upper"],
-                current_tick,
-                position["hooks"],
+                int(fee),
+                int(liquidity),
+                int(tick_lower),
+                int(tick_upper),
+                int(current_tick),
+                hooks,
+                pool_id.hex(),
             )
 
-            results = []
+            out: list[AssetData] = []
             if amount0 > 0:
-                results.append(
-                    AssetData(
-                        asset_address=Web3.to_checksum_address(position["currency0"]),
-                        amount=amount0,
-                    )
-                )
+                out.append(AssetData(asset_address=Web3.to_checksum_address(currency0), amount=int(amount0)))
             if amount1 > 0:
-                results.append(
-                    AssetData(
-                        asset_address=Web3.to_checksum_address(position["currency1"]),
-                        amount=amount1,
-                    )
-                )
-
-            return results
+                out.append(AssetData(asset_address=Web3.to_checksum_address(currency1), amount=int(amount1)))
+            return out
 
         except Exception as e:
             logger.error("Failed to process Uniswap V4 position %d: %s", token_id, e)
             return []
 
-    async def fetch_assets(self, subvault_address: str, previous_assets: list[AssetData] | None = None) -> list[AssetData]:
-        """Fetch Uniswap V4 positions for a subvault.
-
-        This method:
-        1. Enumerates all position NFT IDs owned by subvault
-        2. Fetches position details for each NFT (including hook address)
-        3. Calculates withdrawable currency0 and currency1 amounts
-        4. Returns both tokens for pricing pipeline
-
-        Args:
-            subvault_address: Subvault address to query
-
-        Returns:
-            List of AssetData with token amounts
-        """
+    async def fetch_assets(
+        self,
+        subvault_address: str,
+        previous_assets: list[AssetData] | None = None,
+    ) -> list[AssetData]:
         if not self.position_manager:
-            logger.warning(
-                "Uniswap V4: position_manager not configured, cannot fetch positions"
-            )
-            # Pass through previous assets from adapter chain even if not configured
+            logger.warning("Uniswap V4: position_manager not configured, cannot fetch positions")
             return previous_assets if previous_assets else []
 
-        # Get position count
-        position_count = await self._get_position_count(subvault_address)
-
-        if position_count == 0:
-            logger.debug(
-                "Uniswap V4: no positions found for subvault %s", subvault_address
-            )
-            # Pass through previous assets from adapter chain even if we have no positions
+        # Discover tokenIds via subgraph
+        try:
+            token_ids = await self._fetch_token_ids_from_subgraph(subvault_address)
+        except Exception as e:
+            logger.error("Uniswap V4: subgraph tokenId discovery failed for %s: %s", subvault_address, e)
             return previous_assets if previous_assets else []
 
-        logger.info(
-            "Uniswap V4: found %d positions for subvault %s",
-            position_count,
-            subvault_address,
-        )
+        if not token_ids:
+            logger.debug("Uniswap V4: no positions found for subvault %s", subvault_address)
+            return previous_assets if previous_assets else []
 
-        # Enumerate all position IDs
-        position_ids = []
-        for i in range(position_count):
-            try:
-                token_id = await self._get_position_id_by_index(subvault_address, i)
-                position_ids.append(token_id)
-                logger.debug("Uniswap V4: position index %d = token ID %d", i, token_id)
-            except Exception as e:
-                logger.error(
-                    "Failed to get position ID at index %d for %s: %s",
-                    i,
-                    subvault_address,
-                    e,
-                )
+        logger.info("Uniswap V4: found %d positions (subgraph) for subvault %s", len(token_ids), subvault_address)
+        for tid in token_ids[:10]:
+            logger.debug("Uniswap V4: tokenId %d", tid)
+        if len(token_ids) > 10:
+            logger.debug("Uniswap V4: (showing first 10 tokenIds only)")
 
-        # Process each position
+        # Process positions
         all_results: list[AssetData] = []
-        for token_id in position_ids:
-            results = await self._process_position(token_id, subvault_address)
-            all_results.extend(results)
+        for token_id in token_ids:
+            all_results.extend(await self._process_position(token_id, subvault_address))
 
         # Aggregate amounts by token address
         aggregated: dict[str, int] = {}
         for asset in all_results:
             addr = asset.asset_address.lower()
-            aggregated[addr] = aggregated.get(addr, 0) + asset.amount
+            aggregated[addr] = aggregated.get(addr, 0) + int(asset.amount)
 
         final_results = [
             AssetData(asset_address=Web3.to_checksum_address(addr), amount=amount)
@@ -730,22 +502,14 @@ class UniswapV4Adapter(BaseAssetAdapter):
         logger.info(
             "Uniswap V4: fetched %d unique tokens from %d positions for subvault %s",
             len(final_results),
-            len(position_ids),
+            len(token_ids),
             subvault_address,
         )
 
-        # Pass through previous assets from adapter chain (non-conversion adapter)
         if previous_assets:
             return previous_assets + final_results
         return final_results
 
     async def fetch_all_assets(self) -> list[AssetData]:
-        """Global asset fetching not supported for Uniswap V4.
-
-        Uniswap V4 adapter works per-subvault only.
-
-        Returns:
-            Empty list
-        """
         logger.debug("Uniswap V4 adapter does not support global asset fetching")
         return []
