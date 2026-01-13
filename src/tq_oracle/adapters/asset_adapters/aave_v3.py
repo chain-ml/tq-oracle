@@ -149,12 +149,17 @@ class AaveV3Adapter(BaseAssetAdapter):
         )
         logger.debug("Base asset type: %s", self.base_asset_type)
 
+        # Instance name for multi-pool tracking
+        self.instance_name = overrides.get("name", adapter_config.name)
+        logger.debug("Instance name: %s", self.instance_name)
+
         logger.info(
-            "Aave V3 adapter initialization complete: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s",
+            "Aave V3 adapter initialization complete: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s, instance=%s",
             self.pool_address,
             len(self.supply_tokens),
             len(self.borrow_tokens),
             self.base_asset_type,
+            self.instance_name or "default",
         )
 
     @property
@@ -272,7 +277,8 @@ class AaveV3Adapter(BaseAssetAdapter):
         Returns:
             List of AssetData with positive amounts for supply and negative for borrows
         """
-        logger.info("Aave V3 fetch_assets called for subvault %s", subvault_address)
+        instance_label = f" ({self.instance_name})" if self.instance_name else ""
+        logger.info("Aave V3%s fetch_assets called for subvault %s", instance_label, subvault_address)
 
         if self._skip:
             logger.debug("Adapter is skipped, returning empty list")
@@ -329,7 +335,8 @@ class AaveV3Adapter(BaseAssetAdapter):
                     )
                 )
                 logger.debug(
-                    "Aave V3: %s supply balance for %s: %d (underlying: %s)",
+                    "Aave V3%s: %s supply balance for %s: %d (underlying: %s)",
+                    instance_label,
                     symbol,
                     subvault_address,
                     balance,
@@ -365,7 +372,8 @@ class AaveV3Adapter(BaseAssetAdapter):
                     )
                 )
                 logger.debug(
-                    "Aave V3: %s borrow balance for %s: %d (stored as negative, underlying: %s)",
+                    "Aave V3%s: %s borrow balance for %s: %d (stored as negative, underlying: %s)",
+                    instance_label,
                     symbol,
                     subvault_address,
                     balance,
@@ -373,7 +381,8 @@ class AaveV3Adapter(BaseAssetAdapter):
                 )
 
         logger.info(
-            "Aave V3: fetched %d positions for subvault %s",
+            "Aave V3%s: fetched %d positions for subvault %s",
+            instance_label,
             len(results),
             subvault_address,
         )
