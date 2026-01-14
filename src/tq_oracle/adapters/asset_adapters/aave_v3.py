@@ -53,6 +53,29 @@ class AaveV3Adapter(BaseAssetAdapter):
 
         logger.info("Initializing Aave V3 adapter...")
 
+        # Load adapter configuration with overrides
+        # Note: adapter_config may be a list when using multi-instance configuration
+        # In that case, instance-specific config is passed via overrides from pipeline
+        logger.debug("Loading adapter configuration (overrides: %s)", bool(overrides))
+        raw_config = config.adapters.aave_v3
+
+        # Handle list config (multi-instance) - get first or use empty config
+        if isinstance(raw_config, list):
+            # When using multi-instance, config is passed via overrides
+            # Use first config as fallback, or empty config if list is empty
+            from ...settings import AaveV3AdapterSettings
+
+            adapter_config = raw_config[0] if raw_config else AaveV3AdapterSettings()
+            logger.debug(
+                "Multi-instance config detected, using overrides or first config"
+            )
+        else:
+            adapter_config = raw_config
+
+        # Instance name for multi-pool tracking - set early so it's always available
+        self.instance_name = overrides.get("name", adapter_config.name)
+        logger.debug("Instance name: %s", self.instance_name)
+
         # Skip adapter if not on mainnet (for now)
         self._skip = config.network != Network.MAINNET
         if self._skip:
@@ -96,25 +119,6 @@ class AaveV3Adapter(BaseAssetAdapter):
             self._rpc_jitter,
         )
 
-        # Load adapter configuration with overrides
-        # Note: adapter_config may be a list when using multi-instance configuration
-        # In that case, instance-specific config is passed via overrides from pipeline
-        logger.debug("Loading adapter configuration (overrides: %s)", bool(overrides))
-        raw_config = config.adapters.aave_v3
-
-        # Handle list config (multi-instance) - get first or use empty config
-        if isinstance(raw_config, list):
-            # When using multi-instance, config is passed via overrides
-            # Use first config as fallback, or empty config if list is empty
-            from ...settings import AaveV3AdapterSettings
-
-            adapter_config = raw_config[0] if raw_config else AaveV3AdapterSettings()
-            logger.debug(
-                "Multi-instance config detected, using overrides or first config"
-            )
-        else:
-            adapter_config = raw_config
-
         # Pool address
         self.pool_address = overrides.get(
             "pool_address", adapter_config.pool_address or AAVE_V3_POOL_MAINNET
@@ -150,11 +154,12 @@ class AaveV3Adapter(BaseAssetAdapter):
         logger.debug("Base asset type: %s", self.base_asset_type)
 
         logger.info(
-            "Aave V3 adapter initialization complete: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s",
+            "Aave V3 adapter initialization complete: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s, instance=%s",
             self.pool_address,
             len(self.supply_tokens),
             len(self.borrow_tokens),
             self.base_asset_type,
+            self.instance_name or "default",
         )
 
     @property
@@ -272,7 +277,12 @@ class AaveV3Adapter(BaseAssetAdapter):
         Returns:
             List of AssetData with positive amounts for supply and negative for borrows
         """
-        logger.info("Aave V3 fetch_assets called for subvault %s", subvault_address)
+        instance_label = f" ({self.instance_name})" if self.instance_name else ""
+        logger.info(
+            "Aave V3%s fetch_assets called for subvault %s",
+            instance_label,
+            subvault_address,
+        )
 
         if self._skip:
             logger.debug("Adapter is skipped, returning empty list")
@@ -329,7 +339,8 @@ class AaveV3Adapter(BaseAssetAdapter):
                     )
                 )
                 logger.debug(
-                    "Aave V3: %s supply balance for %s: %d (underlying: %s)",
+                    "Aave V3%s: %s supply balance for %s: %d (underlying: %s)",
+                    instance_label,
                     symbol,
                     subvault_address,
                     balance,
@@ -365,7 +376,8 @@ class AaveV3Adapter(BaseAssetAdapter):
                     )
                 )
                 logger.debug(
-                    "Aave V3: %s borrow balance for %s: %d (stored as negative, underlying: %s)",
+                    "Aave V3%s: %s borrow balance for %s: %d (stored as negative, underlying: %s)",
+                    instance_label,
                     symbol,
                     subvault_address,
                     balance,
@@ -373,7 +385,8 @@ class AaveV3Adapter(BaseAssetAdapter):
                 )
 
         logger.info(
-            "Aave V3: fetched %d positions for subvault %s",
+            "Aave V3%s: fetched %d positions for subvault %s",
+            instance_label,
             len(results),
             subvault_address,
         )

@@ -15,38 +15,62 @@ Three new components have been added to support additional DeFi protocols:
 ## 1. Aave V3 Adapter
 
 ### Purpose
-Tracks Aave V3 lending positions by querying aToken balances (supply) and variable debt token balances (borrows).
+Tracks Aave V3 lending positions (and forks like Spark) by querying aToken balances (supply) and variable debt token balances (borrows).
 
 ### How It Works
 - Queries balances for configured aTokens (supply positions)
 - Queries balances for configured variable debt tokens (borrow positions)
 - Returns supply as positive amounts and borrows as **negative amounts**
 - aTokens and debt tokens inherit pricing from their underlying assets
+- Supports **multiple pools/forks** via named instances (e.g., Aave + Spark simultaneously)
 
 ### Configuration
 
-#### Global Configuration (tq-oracle.toml)
+#### Single Pool Configuration (Simple)
 ```toml
 [adapters.aave_v3]
 pool_address = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
 base_asset_type = "eth"  # 'eth' or 'usd'
-
-[adapters.aave_v3.supply_tokens]
-WETH = "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8"
-wstETH = "0x0B925eD163218f6662a35e0f0371Ac234f9E9371"
-USDC = "0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c"
-
-[adapters.aave_v3.borrow_tokens]
-WETH = "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE"
-USDC = "0x72E95b8931767C79bA4EeE721354d6E99a61D004"
+supply_tokens = { WETH = "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8" }
+borrow_tokens = { WETH = "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE" }
 ```
 
-#### Per-Subvault Usage
+Usage:
 ```toml
 [[subvault_adapters]]
 subvault_address = "0xYourSubvaultAddress"
 additional_adapters = ["aave_v3"]
 ```
+
+#### Multi-Pool Configuration (Aave + Spark)
+
+**NEW:** Track multiple Aave V3 pools or forks using named instances:
+
+```toml
+# Aave V3 Official
+[[adapters.aave_v3]]
+name = "aave"
+pool_address = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+base_asset_type = "eth"
+supply_tokens = { WETH = "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8" }
+borrow_tokens = { WETH = "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE" }
+
+# Spark (Aave V3 fork)
+[[adapters.aave_v3]]
+name = "spark"
+pool_address = "0xC13e21B648A5Ee794902342038FF3aDAB66BE987"
+supply_tokens = { WETH = "0x59cD1C87501baa753d0B5B5Ab5D8416A45cD71DB" }
+borrow_tokens = { WETH = "0x2e7576042566f8D6990e07A1B61Ad1efd86Ae70d" }
+```
+
+Usage (reference by instance name):
+```toml
+[[subvault_adapters]]
+subvault_address = "0xYourSubvaultAddress"
+additional_adapters = ["aave_v3.aave", "aave_v3.spark"]  # Track both!
+```
+
+> **📘 See [AAVE_MULTI_POOL_GUIDE.md](AAVE_MULTI_POOL_GUIDE.md) for complete multi-pool documentation including Spark token addresses and migration guide.**
 
 #### Per-Subvault Override
 ```toml
@@ -60,10 +84,12 @@ adapter_overrides = { aave_v3 = {
 ```
 
 ### Key Features
+- **Multi-pool support** - Track Aave V3 + Spark + any fork simultaneously via named instances
 - **Mainnet only** (for now) - automatically skips on other networks
 - **Default token lists** - Comes with common mainnet tokens (WETH, wstETH, USDC, USDT, USDe)
 - **Configurable** - Can override tokens per chain or per subvault
 - **Negative borrows** - Borrow positions are returned as negative amounts for proper accounting
+- **Backwards compatible** - Single pool configuration still works without changes
 
 ### Files
 - Implementation: [src/tq_oracle/adapters/asset_adapters/aave_v3.py](src/tq_oracle/adapters/asset_adapters/aave_v3.py)

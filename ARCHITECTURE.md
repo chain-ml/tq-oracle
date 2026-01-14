@@ -49,19 +49,32 @@ flowchart TD
 
 - Fetches subvault addresses via Vault ABI calls, validates `subvault_adapters` config entries, and optionally allows synthetic addresses when `skip_subvault_existence_check` is set.
 - Three default adapters run automatically based on configuration:
-  - `IdleBalancesAdapter` – gathers on-chain token balances across vault and all subvaults (skippable per-subvault via `skip_idle_balances`).
+  - `IdleBalancesAdapter` – gathers on-chain token balances across vault and all subvaults (skippable per-subvault via `skip_idle_balances`). Supports `extra_tokens` (TVL-only), `extra_addresses`, and `non_tvl_tokens` for specialized balance tracking.
   - `StrETHAdapter` – fetches strETH positions (skippable via `skip_streth`).
   - `StakeWiseAdapter` – fetches StakeWise vault positions when `stakewise_vault_addresses` is configured.
-- Additional adapters can be configured per subvault via `additional_adapters`; each adapter inherits from `BaseAssetAdapter` and is registered in `ADAPTER_REGISTRY`.
+- Additional adapters can be configured per subvault via `additional_adapters`; each adapter inherits from `BaseAssetAdapter` and is registered in `ADAPTER_REGISTRY`:
+  - **Discovery adapters** (add new assets):
+    - `AaveV3Adapter` – queries aToken (supply) and debt token (borrow) positions. Supports multi-pool/fork tracking via named instances (e.g., `aave_v3.aave` + `aave_v3.spark` for tracking both Aave and Spark pools simultaneously).
+    - `UniswapV3Adapter` – discovers NFT-based LP positions from Uniswap V3 position manager.
+    - `UniswapV4Adapter` – discovers NFT-based LP positions from Uniswap V4 position manager (requires Graph API key).
+  - **Conversion adapters** (transform wrapped tokens):
+    - `PendleAdapter` – converts PT and LP tokens to underlying assets via Pendle oracle.
+    - `ERC4626Adapter` – converts ERC4626 vault tokens to underlying assets via `convertToAssets()`.
+    - `SNUSDAdapter` – specialized converter for sNUSD vault tokens.
+- **Adapter chaining**: Adapters run sequentially per subvault, allowing conversion adapters to transform outputs from discovery adapters (e.g., Aave discovers aPT-token → Pendle converts PT → underlying).
 - Results are combined asynchronously and folded into `AggregatedAssets` via `processors/asset_aggregator.py`.
+- **Per-subvault breakdown**: The system logs detailed asset holdings for each subvault and extra address, showing balances, ETH values, and aggregated totals.
 
 ### Pricing & Validation (`pipeline/pricing.py`, `adapters/price_adapters/*`, `adapters/price_validators/pyth.py`)
 
-- Price adapters are instantiated from `PRICE_ADAPTERS`:
-  - `CowSwapAdapter` – fetches prices from CoW Protocol for general assets.
-  - `ETHAdapter` – handles ETH/WETH pricing.
+- Price adapters are instantiated from `PRICE_ADAPTERS` in priority order:
+  - `ETHAdapter` – handles ETH/WETH pricing (always 1:1).
+  - `CoinGeckoAdapter` – fetches API-based prices (API key optional).
+  - `ChainlinkAdapter` – fetches stablecoin prices via ETH/USD oracle when `chainlink_enabled=true`.
+  - `CowSwapAdapter` – fetches prices from CoW Protocol for general assets (fallback).
+  - `ManualAdapter` – allows manual price overrides for testing.
 - Each adapter updates a shared `PriceData` accumulator keyed by asset address (base asset must already be known).
-- `run_price_validations()` invokes validators from `PRICE_VALIDATORS`. The active `PythValidator` re-fetches prices through the Pyth Hermes API and compares deviations against configurable warning/failure tolerances (`price_warning_tolerance_percentage`, `price_failure_tolerance_percentage`).
+- `run_price_validations()` invokes validators from `PRICE_VALIDATORS`. The active `PythValidator` re-fetches prices through the Pyth Hermes API and compares deviations against configurable warning/failure tolerances (`price_warning_tolerance_percentage`, `price_failure_tolerance_percentage`). Pyth is used for validation only, not primary pricing.
 - `processors/total_assets.calculate_total_assets()` multiplies balances by prices (18-decimal math) and raises if any asset lacks a quote.
 - `processors/oracle_helper.derive_final_prices()` submits the total asset figure plus encoded prices to the OracleHelper contract to obtain finalized per-asset values (respecting `ignore_empty_vault`).
 
@@ -87,7 +100,11 @@ Key `OracleSettings` fields:
 Each entry under `subvault_adapters` may specify:
 - `subvault_address`: Target contract (checksummed matching Vault discovery unless `skip_subvault_existence_check` is true).
 - `skip_idle_balances`: Exclude default idle balance scan for that address.
-- `additional_adapters`: Extra adapter names to run (must exist in `ADAPTER_REGISTRY`).
+- `additional_adapters`: Extra adapter names to run (must exist in `ADAPTER_REGISTRY`). Examples:
+  - `["aave_v3"]` – single Aave V3 pool
+  - `["aave_v3.aave", "aave_v3.spark"]` – multiple Aave/Spark pools
+  - `["aave_v3", "pendle", "erc4626"]` – adapter chain for PT token conversion
+  - `["uniswap_v3", "uniswap_v4"]` – Uniswap LP positions
 
 ## Integration Flow with Mellow Vaults
 
