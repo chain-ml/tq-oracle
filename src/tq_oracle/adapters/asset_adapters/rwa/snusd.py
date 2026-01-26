@@ -111,8 +111,8 @@ class SNUSDAdapter(BaseAssetAdapter):
         self.snusd_token = self.w3.to_checksum_address(snusd_token)
         self.nusd_token = self.w3.to_checksum_address(nusd_token)
 
-        # Get current block timestamp for cooldown calculations
-        self._block_timestamp_cache: int | None = None
+        # Get current block timestamp for cooldown calculations (keyed by block number)
+        self._block_timestamp_cache: dict[int, int] = {}
 
         logger.debug(
             "sNUSD adapter initialized: snusd=%s, nusd=%s, cooldown=%ds",
@@ -144,12 +144,12 @@ class SNUSDAdapter(BaseAssetAdapter):
 
     async def _get_block_timestamp(self) -> int:
         """Get timestamp of current block."""
-        if self._block_timestamp_cache is not None:
-            return self._block_timestamp_cache
+        if self.block_number in self._block_timestamp_cache:
+            return self._block_timestamp_cache[self.block_number]
 
         block = await self._rpc(self.w3.eth.get_block, self.block_number)
         timestamp = int(block["timestamp"])
-        self._block_timestamp_cache = timestamp
+        self._block_timestamp_cache[self.block_number] = timestamp
         return timestamp
 
     async def _balance_of(self, token: str, owner: str) -> int:
