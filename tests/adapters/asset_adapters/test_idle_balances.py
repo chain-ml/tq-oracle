@@ -255,3 +255,26 @@ def test_additional_assets_can_be_disabled(config):
     assert adapter._extra_additional_assets_by_symbol == {}
     assert adapter._extra_addresses == []
     assert merged == [base_asset]
+
+
+@pytest.mark.asyncio
+async def test_fetch_assets_fails_if_any_asset_fails(config, monkeypatch):
+    """fetch_assets should raise ValueError if any asset balance fetch fails (FYEO-TQO-02)."""
+    adapter = IdleBalancesAdapter(config)
+
+    good_token = adapter.eth_address
+    bad_token = "0x00000000000000000000000000000000000000FF"
+
+    async def fake_fetch_supported_assets():
+        return [good_token, bad_token]
+
+    async def fake_fetch_asset_balance(_w3, _subvault, asset_address, tvl_only=False):
+        if asset_address == bad_token:
+            raise ConnectionError("RPC timeout")
+        return AssetData(asset_address=asset_address, amount=1, tvl_only=tvl_only)
+
+    monkeypatch.setattr(adapter, "_fetch_supported_assets", fake_fetch_supported_assets)
+    monkeypatch.setattr(adapter, "_fetch_asset_balance", fake_fetch_asset_balance)
+
+    with pytest.raises(ValueError, match=r"Failed to fetch balance for 1 asset\(s\)"):
+        await adapter.fetch_assets("0xSubvault")

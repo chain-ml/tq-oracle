@@ -176,6 +176,8 @@ class IdleBalancesAdapter(BaseAssetAdapter):
         asset_results = await asyncio.gather(*asset_tasks, return_exceptions=True)
 
         assets: list[AssetData] = []
+        failed_assets: list[tuple[str, Exception]] = []
+
         for asset_addr, result in zip(supported_assets, asset_results):
             if isinstance(result, Exception):
                 logger.error(
@@ -184,8 +186,16 @@ class IdleBalancesAdapter(BaseAssetAdapter):
                     subvault_address,
                     result,
                 )
+                failed_assets.append((asset_addr, result))
             elif isinstance(result, AssetData):
                 assets.append(result)
+
+        if failed_assets:
+            asset_list = ", ".join(addr for addr, _ in failed_assets)
+            raise ValueError(
+                f"Failed to fetch balance for {len(failed_assets)} asset(s) in "
+                f"subvault {subvault_address}: {asset_list}"
+            )
 
         logger.debug("Fetched %d L1 asset balances for subvault", len(assets))
         return assets
