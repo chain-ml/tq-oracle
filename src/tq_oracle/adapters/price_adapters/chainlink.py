@@ -117,8 +117,9 @@ class ChainlinkAdapter(BasePriceAdapter):
         Returns:
             Number of decimals for the token
         """
-        if token_address in self._decimals_cache:
-            return self._decimals_cache[token_address]
+        cache_key = token_address.lower()  # Normalize for consistent caching (FYEO-TQO-04)
+        if cache_key in self._decimals_cache:
+            return self._decimals_cache[cache_key]
 
         erc20_abi = load_erc20_abi()
         token_contract = self.w3.eth.contract(
@@ -134,7 +135,7 @@ class ChainlinkAdapter(BasePriceAdapter):
             )
         )
 
-        self._decimals_cache[token_address] = decimals
+        self._decimals_cache[cache_key] = decimals
         logger.debug(f"Fetched decimals for {token_address}: {decimals}")
 
         return decimals
