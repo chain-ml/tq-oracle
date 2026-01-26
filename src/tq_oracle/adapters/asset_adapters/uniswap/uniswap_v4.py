@@ -91,6 +91,9 @@ class UniswapV4Adapter(BaseAssetAdapter):
                 "Get an API key at https://thegraph.com/studio/"
             )
 
+        # HTTP session for GraphQL requests (FYEO-TQO-07)
+        self._session = requests.Session()
+
         logger.debug(
             "Uniswap V4 adapter initialized: position_manager=%s pool_manager=%s state_view=%s subgraph_id=%s",
             self.position_manager,
@@ -153,6 +156,40 @@ class UniswapV4Adapter(BaseAssetAdapter):
             )
         return f"https://gateway.thegraph.com/api/{self.graph_api_key}/subgraphs/id/{self.subgraph_id}"
 
+    @backoff.on_exception(
+        backoff.expo,
+        (requests.exceptions.RequestException, requests.exceptions.HTTPError),
+        max_time=30,
+        giveup=lambda e: isinstance(e, requests.exceptions.HTTPError)
+        and e.response is not None
+        and e.response.status_code not in [429, 500, 502, 503, 504],
+        jitter=backoff.full_jitter,
+    )
+    async def _graphql_request(self, payload: dict) -> dict:
+        """Execute GraphQL request with retry logic (FYEO-TQO-08).
+
+        Args:
+            payload: GraphQL query payload with 'query' and 'variables'
+
+        Returns:
+            Parsed JSON response data
+
+        Raises:
+            requests.exceptions.HTTPError: On non-retryable HTTP errors
+            ValueError: On GraphQL query errors
+        """
+        resp = await asyncio.to_thread(
+            self._session.post,
+            self._graph_url(),
+            json=payload,
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if "errors" in data:
+            raise ValueError(f"Subgraph query errors: {data['errors']}")
+        return data
+
     async def _fetch_token_ids_from_subgraph(self, owner: str) -> list[int]:
         # Uniswap subgraph schema uses Bytes for owner; typically lowercase hex with 0x prefix
         owner_lc = owner.lower()
@@ -174,16 +211,7 @@ class UniswapV4Adapter(BaseAssetAdapter):
                 "query": query,
                 "variables": {"owner": owner_lc, "first": first, "skip": skip},
             }
-            resp = await asyncio.to_thread(
-                requests.post,
-                self._graph_url(),
-                json=payload,
-                timeout=20,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if "errors" in data:
-                raise ValueError(f"Subgraph query errors: {data['errors']}")
+            data = await self._graphql_request(payload)
 
             rows = data.get("data", {}).get("positions", []) or []
             if not rows:
