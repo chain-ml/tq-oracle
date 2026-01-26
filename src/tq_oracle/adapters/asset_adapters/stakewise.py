@@ -123,9 +123,9 @@ class StakeWiseAdapter(BaseAssetAdapter):
             if skip_exit_queue_scan is not None
             else adapter_config.skip_exit_queue_scan
         )
-        self._rpc_sem = asyncio.Semaphore(getattr(config, "max_calls", 5))
-        self._rpc_delay = getattr(config, "rpc_delay", 0.15)
-        self._rpc_jitter = getattr(config, "rpc_jitter", 0.10)
+        self._rpc_sem = asyncio.Semaphore(config.rpc_max_concurrent_calls)
+        self._rpc_delay = config.rpc_delay
+        self._rpc_jitter = config.rpc_jitter
         self._block_timestamp_cache: dict[int, int] = {}
 
         extra_address_candidates = [

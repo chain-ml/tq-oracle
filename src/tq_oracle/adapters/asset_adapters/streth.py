@@ -66,9 +66,9 @@ class StrETHAdapter(BaseAssetAdapter):
             address=Web3.to_checksum_address(config.multicall), abi=load_multicall_abi()
         )
 
-        self._rpc_sem = asyncio.Semaphore(getattr(self.config, "max_calls", 5))
-        self._rpc_delay = getattr(self.config, "rpc_delay", 0.15)  # seconds
-        self._rpc_jitter = getattr(self.config, "rpc_jitter", 0.10)  # seconds
+        self._rpc_sem = asyncio.Semaphore(config.rpc_max_concurrent_calls)
+        self._rpc_delay = config.rpc_delay
+        self._rpc_jitter = config.rpc_jitter
 
     @backoff.on_exception(
         backoff.expo, (ProviderConnectionError), max_time=30, jitter=backoff.full_jitter
