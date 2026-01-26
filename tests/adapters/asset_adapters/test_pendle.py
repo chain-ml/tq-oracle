@@ -168,17 +168,16 @@ class TestPendleFetchAssets:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_skips_market_missing_config(self, mainnet_config, subvault_address):
-        """Should skip markets with missing required config fields."""
+    async def test_raises_on_market_missing_config(self, mainnet_config, subvault_address):
+        """Should raise ValueError when market missing required config fields (FYEO-TQO-03)."""
         markets = {
             "incomplete_market": {
                 "market": "0x1234567890123456789012345678901234567890",
                 # missing accounting_asset
             }
         }
-        adapter = PendleAdapter(mainnet_config, markets=markets)
-        result = await adapter.fetch_assets(subvault_address)
-        assert result == []
+        with pytest.raises(ValueError, match="missing required 'accounting_asset'"):
+            PendleAdapter(mainnet_config, markets=markets)
 
     @pytest.mark.asyncio
     async def test_returns_asset_data_list(

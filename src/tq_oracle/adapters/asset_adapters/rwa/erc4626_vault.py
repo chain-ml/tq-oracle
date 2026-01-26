@@ -76,10 +76,31 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
         else:
             self.vaults = {}
 
+        # Validate vault configuration (FYEO-TQO-03)
+        self._validate_vaults_config()
+
         logger.debug(
             "ERC4626 adapter initialized: %d vaults configured",
             len(self.vaults),
         )
+
+    def _validate_vaults_config(self) -> None:
+        """Validate vault configuration for duplicates and required fields."""
+        seen_vault_tokens: dict[str, str] = {}  # vault_token -> vault_name
+
+        for vault_name, vault_config in self.vaults.items():
+            if "vault_token" not in vault_config:
+                raise ValueError(
+                    f"ERC4626 vault '{vault_name}' missing required 'vault_token' config"
+                )
+
+            vault_token = vault_config["vault_token"].lower()
+            if vault_token in seen_vault_tokens:
+                raise ValueError(
+                    f"Duplicate vault_token address {vault_config['vault_token']} "
+                    f"in ERC4626 vaults '{seen_vault_tokens[vault_token]}' and '{vault_name}'"
+                )
+            seen_vault_tokens[vault_token] = vault_name
 
     @property
     def adapter_name(self) -> str:

@@ -93,11 +93,36 @@ class PendleAdapter(BaseAssetAdapter):
         else:
             self.markets = {}
 
+        # Validate markets configuration (FYEO-TQO-03)
+        self._validate_markets_config()
+
         logger.debug(
             "Pendle adapter initialized: oracle=%s, markets=%d",
             self.oracle_address,
             len(self.markets),
         )
+
+    def _validate_markets_config(self) -> None:
+        """Validate markets configuration for duplicates and required fields."""
+        seen_markets: dict[str, str] = {}  # market_address -> market_name
+
+        for market_name, market_config in self.markets.items():
+            if "market" not in market_config:
+                raise ValueError(
+                    f"Pendle market '{market_name}' missing required 'market' config"
+                )
+            if "accounting_asset" not in market_config:
+                raise ValueError(
+                    f"Pendle market '{market_name}' missing required 'accounting_asset' config"
+                )
+
+            market_address = market_config["market"].lower()
+            if market_address in seen_markets:
+                raise ValueError(
+                    f"Duplicate market address {market_config['market']} "
+                    f"in Pendle markets '{seen_markets[market_address]}' and '{market_name}'"
+                )
+            seen_markets[market_address] = market_name
 
     @property
     def adapter_name(self) -> str:

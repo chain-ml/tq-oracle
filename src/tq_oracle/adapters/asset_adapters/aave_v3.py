@@ -153,6 +153,9 @@ class AaveV3Adapter(BaseAssetAdapter):
         )
         logger.debug("Base asset type: %s", self.base_asset_type)
 
+        # Validate token configuration (FYEO-TQO-03)
+        self._validate_tokens_config()
+
         logger.info(
             "Aave V3 adapter initialization complete: pool=%s, supply_tokens=%d, borrow_tokens=%d, base_asset=%s, instance=%s",
             self.pool_address,
@@ -161,6 +164,30 @@ class AaveV3Adapter(BaseAssetAdapter):
             self.base_asset_type,
             self.instance_name or "default",
         )
+
+    def _validate_tokens_config(self) -> None:
+        """Validate token configuration for duplicates."""
+        # Check supply tokens for duplicates
+        seen_supply: dict[str, str] = {}  # address -> symbol
+        for symbol, address in self.supply_tokens.items():
+            addr_lower = address.lower()
+            if addr_lower in seen_supply:
+                raise ValueError(
+                    f"Duplicate supply token address {address} "
+                    f"for symbols '{seen_supply[addr_lower]}' and '{symbol}'"
+                )
+            seen_supply[addr_lower] = symbol
+
+        # Check borrow tokens for duplicates
+        seen_borrow: dict[str, str] = {}  # address -> symbol
+        for symbol, address in self.borrow_tokens.items():
+            addr_lower = address.lower()
+            if addr_lower in seen_borrow:
+                raise ValueError(
+                    f"Duplicate borrow token address {address} "
+                    f"for symbols '{seen_borrow[addr_lower]}' and '{symbol}'"
+                )
+            seen_borrow[addr_lower] = symbol
 
     @property
     def adapter_name(self) -> str:
@@ -390,6 +417,17 @@ class AaveV3Adapter(BaseAssetAdapter):
             len(results),
             subvault_address,
         )
+
+        # Merge with previous adapter results if provided (for adapter chaining)
+        if previous_assets:
+            logger.debug(
+                "Aave V3%s: merging %d previous assets with %d new assets",
+                instance_label,
+                len(previous_assets),
+                len(results),
+            )
+            results = list(previous_assets) + results
+
         return results
 
     async def fetch_all_assets(self) -> list[AssetData]:
