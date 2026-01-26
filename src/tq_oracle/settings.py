@@ -245,6 +245,7 @@ class OracleSettings(BaseSettings):
     chainlink_stablecoins: list[str] = Field(
         default_factory=list
     )  # Stablecoins to price via Chainlink
+    chainlink_staleness_threshold: int = 86400  # Max age in seconds (default 24 hours)
 
     # CoinGecko-specific settings
     coingecko_enabled: bool = False

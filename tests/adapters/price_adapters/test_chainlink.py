@@ -365,15 +365,18 @@ class TestGetEthUsdPrice:
         # Mock contract calls
         mock_contract = MagicMock()
         mock_contract.functions.latestRoundData.return_value.call.return_value = (
-            1,
-            -100,
-            0,
-            1234567890,
-            1,  # Negative answer
+            1,  # roundId
+            -100,  # answer (negative)
+            0,  # startedAt
+            1234567890,  # updatedAt
+            1,  # answeredInRound
         )
         mock_contract.functions.decimals.return_value.call.return_value = 8
 
         mocker.patch.object(adapter.w3.eth, "contract", return_value=mock_contract)
+        mocker.patch.object(
+            adapter.w3.eth, "get_block", return_value={"timestamp": 1234567890}
+        )
 
         with pytest.raises(ValueError, match="Invalid Chainlink price"):
             await adapter._get_eth_usd_price()
@@ -385,18 +388,118 @@ class TestGetEthUsdPrice:
 
         mock_contract = MagicMock()
         mock_contract.functions.latestRoundData.return_value.call.return_value = (
-            1,
-            0,
-            0,
-            1234567890,
-            1,  # Zero answer
+            1,  # roundId
+            0,  # answer (zero)
+            0,  # startedAt
+            1234567890,  # updatedAt
+            1,  # answeredInRound
         )
         mock_contract.functions.decimals.return_value.call.return_value = 8
 
         mocker.patch.object(adapter.w3.eth, "contract", return_value=mock_contract)
+        mocker.patch.object(
+            adapter.w3.eth, "get_block", return_value={"timestamp": 1234567890}
+        )
 
         with pytest.raises(ValueError, match="Invalid Chainlink price"):
             await adapter._get_eth_usd_price()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_zero_updated_at(self, mocker, config):
+        """Should raise ValueError if updatedAt is zero (FYEO-TQO-01)."""
+        adapter = ChainlinkAdapter(config)
+
+        mock_contract = MagicMock()
+        mock_contract.functions.latestRoundData.return_value.call.return_value = (
+            1,  # roundId
+            300000000000,  # answer (valid)
+            0,  # startedAt
+            0,  # updatedAt (zero - invalid)
+            1,  # answeredInRound
+        )
+        mock_contract.functions.decimals.return_value.call.return_value = 8
+
+        mocker.patch.object(adapter.w3.eth, "contract", return_value=mock_contract)
+        mocker.patch.object(
+            adapter.w3.eth, "get_block", return_value={"timestamp": 1234567890}
+        )
+
+        with pytest.raises(ValueError, match="price feed not updated.*updatedAt=0"):
+            await adapter._get_eth_usd_price()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_incomplete_round(self, mocker, config):
+        """Should raise ValueError if answeredInRound < roundId (FYEO-TQO-01)."""
+        adapter = ChainlinkAdapter(config)
+
+        mock_contract = MagicMock()
+        mock_contract.functions.latestRoundData.return_value.call.return_value = (
+            10,  # roundId
+            300000000000,  # answer (valid)
+            0,  # startedAt
+            1234567890,  # updatedAt
+            9,  # answeredInRound (less than roundId - incomplete)
+        )
+        mock_contract.functions.decimals.return_value.call.return_value = 8
+
+        mocker.patch.object(adapter.w3.eth, "contract", return_value=mock_contract)
+        mocker.patch.object(
+            adapter.w3.eth, "get_block", return_value={"timestamp": 1234567890}
+        )
+
+        with pytest.raises(ValueError, match="round incomplete.*answeredInRound=9.*roundId=10"):
+            await adapter._get_eth_usd_price()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_stale_price(self, mocker, config):
+        """Should raise ValueError if price is stale (FYEO-TQO-01)."""
+        adapter = ChainlinkAdapter(config)
+        # Default staleness threshold is 86400 seconds (24 hours)
+
+        mock_contract = MagicMock()
+        mock_contract.functions.latestRoundData.return_value.call.return_value = (
+            1,  # roundId
+            300000000000,  # answer (valid)
+            0,  # startedAt
+            1000000000,  # updatedAt (old timestamp)
+            1,  # answeredInRound
+        )
+        mock_contract.functions.decimals.return_value.call.return_value = 8
+
+        mocker.patch.object(adapter.w3.eth, "contract", return_value=mock_contract)
+        # Block timestamp is 100000 seconds after updatedAt (exceeds 86400 threshold)
+        mocker.patch.object(
+            adapter.w3.eth, "get_block", return_value={"timestamp": 1000100000}
+        )
+
+        with pytest.raises(ValueError, match="price stale.*exceeds threshold"):
+            await adapter._get_eth_usd_price()
+
+    @pytest.mark.asyncio
+    async def test_accepts_fresh_price(self, mocker, config):
+        """Should accept price that is within staleness threshold."""
+        adapter = ChainlinkAdapter(config)
+
+        mock_contract = MagicMock()
+        mock_contract.functions.latestRoundData.return_value.call.return_value = (
+            1,  # roundId
+            300000000000,  # answer (valid)
+            0,  # startedAt
+            1234567890,  # updatedAt
+            1,  # answeredInRound
+        )
+        mock_contract.functions.decimals.return_value.call.return_value = 8
+
+        mocker.patch.object(adapter.w3.eth, "contract", return_value=mock_contract)
+        # Block timestamp is 1000 seconds after updatedAt (within 86400 threshold)
+        mocker.patch.object(
+            adapter.w3.eth, "get_block", return_value={"timestamp": 1234568890}
+        )
+
+        answer, decimals = await adapter._get_eth_usd_price()
+
+        assert answer == 300000000000
+        assert decimals == 8
 
 
 class TestTokenDecimalsCache:

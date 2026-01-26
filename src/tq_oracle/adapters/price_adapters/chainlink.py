@@ -88,6 +88,9 @@ class ChainlinkAdapter(BasePriceAdapter):
         # Decimals cache
         self._decimals_cache: dict[str, int] = {}
 
+        # Staleness threshold
+        self.staleness_threshold = config.chainlink_staleness_threshold
+
         # Get ETH address for base asset validation
         eth_address = config.assets["ETH"]
         if eth_address is None:
@@ -143,14 +146,17 @@ class ChainlinkAdapter(BasePriceAdapter):
             Tuple of (price, decimals)
             - price: ETH price in USD (e.g., 3000 * 10^8 for $3000)
             - decimals: Feed decimals (typically 8)
+
+        Raises:
+            ValueError: If price data is invalid, stale, or round is incomplete
         """
         contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(self.eth_usd_feed),
             abi=load_chainlink_feed_abi(),
         )
 
-        # Get latest round data and decimals in parallel
-        round_data, decimals = await asyncio.gather(
+        # Get latest round data, decimals, and block timestamp in parallel
+        round_data, decimals, block = await asyncio.gather(
             asyncio.to_thread(
                 contract.functions.latestRoundData().call,
                 block_identifier=self.block_number,
@@ -159,18 +165,50 @@ class ChainlinkAdapter(BasePriceAdapter):
                 contract.functions.decimals().call,
                 block_identifier=self.block_number,
             ),
+            asyncio.to_thread(
+                self.w3.eth.get_block,
+                self.block_number,
+            ),
         )
 
-        _, answer, _, updated_at, _ = round_data
+        round_id, answer, started_at, updated_at, answered_in_round = round_data
+        block_timestamp = block["timestamp"]
 
+        # Validation 1: Check price is positive
         if answer <= 0:
             raise ValueError(f"Invalid Chainlink price: {answer}")
 
+        # Validation 2: Check updatedAt is not zero (data exists)
+        if updated_at == 0:
+            raise ValueError(
+                f"Chainlink price feed not updated: updatedAt=0 for round {round_id}"
+            )
+
+        # Validation 3: Check round is complete (answeredInRound >= roundId)
+        if answered_in_round < round_id:
+            raise ValueError(
+                f"Chainlink round incomplete: answeredInRound={answered_in_round} < "
+                f"roundId={round_id}"
+            )
+
+        # Validation 4: Check staleness threshold
+        price_age = block_timestamp - updated_at
+        if price_age > self.staleness_threshold:
+            raise ValueError(
+                f"Chainlink price stale: age={price_age}s exceeds "
+                f"threshold={self.staleness_threshold}s (updatedAt={updated_at}, "
+                f"blockTimestamp={block_timestamp})"
+            )
+
         logger.debug(
-            "Chainlink ETH/USD: price=%d, decimals=%d, updated_at=%d",
+            "Chainlink ETH/USD: price=%d, decimals=%d, updated_at=%d, "
+            "answered_in_round=%d, round_id=%d, price_age=%ds",
             answer,
             decimals,
             updated_at,
+            answered_in_round,
+            round_id,
+            price_age,
         )
 
         return answer, decimals
