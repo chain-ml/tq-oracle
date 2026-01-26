@@ -64,6 +64,7 @@ async def convert_shares_to_assets_erc4626(
     vault_address: str,
     shares: int,
     config: OracleSettings,
+    w3: Web3 | None = None,
 ) -> tuple[str, int]:
     """Convert ERC-4626 vault shares to underlying asset amount.
 
@@ -74,6 +75,7 @@ async def convert_shares_to_assets_erc4626(
         vault_address: Address of the ERC-4626 vault
         shares: Number of shares to convert
         config: Oracle settings with RPC configuration
+        w3: Optional Web3 instance for connection reuse (FYEO-TQO-07)
 
     Returns:
         Tuple of (underlying_asset_address, asset_amount)
@@ -83,7 +85,8 @@ async def convert_shares_to_assets_erc4626(
         convert_shares_to_assets_erc4626(vault, 100e18, config)
         -> (usdc_address, 105e6)
     """
-    w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
+    if w3 is None:
+        w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
 
     contract = w3.eth.contract(
         address=Web3.to_checksum_address(vault_address),
@@ -168,6 +171,8 @@ class RWAConverter:
             config: Oracle settings with RPC configuration
         """
         self.config = config
+        # Reuse Web3 connection for all conversions (FYEO-TQO-07)
+        self._w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
 
     async def convert_to_underlying(
         self,
@@ -184,7 +189,7 @@ class RWAConverter:
             Tuple of (underlying_asset_address, amount)
         """
         return await convert_shares_to_assets_erc4626(
-            vault_address, shares, self.config
+            vault_address, shares, self.config, self._w3
         )
 
     async def convert_to_eth(

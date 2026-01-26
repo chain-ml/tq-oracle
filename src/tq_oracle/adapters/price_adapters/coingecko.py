@@ -109,6 +109,9 @@ class CoinGeckoAdapter(BasePriceAdapter):
         self.block_number = config.block_number_required
         self._decimals_cache: dict[str, int] = {}
 
+        # HTTP session for connection reuse (FYEO-TQO-07)
+        self._session = requests.Session()
+
         logger.info(
             "CoinGecko adapter initialized: tokens=%d, api=%s",
             len(self.token_ids),
@@ -198,7 +201,7 @@ class CoinGeckoAdapter(BasePriceAdapter):
         logger.debug("Fetching CoinGecko prices: ids=%s", ids_param)
 
         response = await asyncio.to_thread(
-            requests.get,
+            self._session.get,
             url,
             params=params,
             headers=headers,

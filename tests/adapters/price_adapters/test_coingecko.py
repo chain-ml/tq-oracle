@@ -159,7 +159,7 @@ class TestFetchPricesBatch:
         mock_response.json.return_value = {"usd-coin": {"eth": 0.000333}}
         mock_response.raise_for_status = MagicMock()
 
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch.object(adapter._session, "get", return_value=mock_response)
 
         result = await adapter._fetch_prices_batch(["usd-coin"])
 
@@ -179,7 +179,7 @@ class TestFetchPricesBatch:
         }
         mock_response.raise_for_status = MagicMock()
 
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch.object(adapter._session, "get", return_value=mock_response)
 
         result = await adapter._fetch_prices_batch(["usd-coin", "tether", "dai"])
 
@@ -200,7 +200,7 @@ class TestFetchPricesBatch:
         }
         mock_response.raise_for_status = MagicMock()
 
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch.object(adapter._session, "get", return_value=mock_response)
 
         result = await adapter._fetch_prices_batch(["usd-coin", "missing-token"])
 
@@ -218,7 +218,7 @@ class TestFetchPricesBatch:
         mock_response.json.return_value = {"usd-coin": {"eth": 0.000333}}
         mock_response.raise_for_status = MagicMock()
 
-        mock_get = mocker.patch("requests.get", return_value=mock_response)
+        mock_get = mocker.patch.object(adapter._session, "get", return_value=mock_response)
 
         await adapter._fetch_prices_batch(["usd-coin"])
 
@@ -235,7 +235,7 @@ class TestFetchPricesBatch:
         mock_response.json.return_value = {"usd-coin": {"eth": 0.000333}}
         mock_response.raise_for_status = MagicMock()
 
-        mock_get = mocker.patch("requests.get", return_value=mock_response)
+        mock_get = mocker.patch.object(adapter._session, "get", return_value=mock_response)
 
         await adapter._fetch_prices_batch(["usd-coin"])
 
@@ -557,8 +557,8 @@ class TestRetryBehavior:
         mock_response_ok.json.return_value = {"usd-coin": {"eth": 0.000333}}
         mock_response_ok.raise_for_status = MagicMock()
 
-        mock_get = mocker.patch(
-            "requests.get", side_effect=[mock_response_429, mock_response_ok]
+        mock_get = mocker.patch.object(
+            adapter._session, "get", side_effect=[mock_response_429, mock_response_ok]
         )
 
         # The backoff decorator should handle retries
@@ -578,7 +578,7 @@ class TestRetryBehavior:
             response=mock_response_404
         )
 
-        mocker.patch("requests.get", return_value=mock_response_404)
+        mocker.patch.object(adapter._session, "get", return_value=mock_response_404)
 
         with pytest.raises(requests.exceptions.HTTPError):
             await adapter._fetch_prices_batch(["usd-coin"])
