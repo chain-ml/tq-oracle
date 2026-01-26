@@ -60,6 +60,7 @@ class UniswapV4Adapter(BaseAssetAdapter):
         self._rpc_sem = asyncio.Semaphore(config.rpc_max_concurrent_calls)
         self._rpc_delay = config.rpc_delay
         self._rpc_jitter = config.rpc_jitter
+        self._rpc_timeout = config.rpc_timeout
 
         adapter_config = config.adapters.uniswap_v4
 
@@ -113,13 +114,17 @@ class UniswapV4Adapter(BaseAssetAdapter):
         jitter=backoff.full_jitter,
     )
     async def _rpc(self, fn, *args, **kwargs):
+        """Execute RPC call with throttling, timeout, and retry (FYEO-TQO-09)."""
         async with self._rpc_sem:
-            try:
-                return await asyncio.to_thread(fn, *args, **kwargs)
-            finally:
-                delay = self._rpc_delay + random.random() * self._rpc_jitter
-                if delay > 0:
-                    await asyncio.sleep(delay)
+            result = await asyncio.wait_for(
+                asyncio.to_thread(fn, *args, **kwargs),
+                timeout=self._rpc_timeout,
+            )
+        # Sleep outside semaphore to not block other tasks
+        delay = self._rpc_delay + random.random() * self._rpc_jitter
+        if delay > 0:
+            await asyncio.sleep(delay)
+        return result
 
     def _pm(self):
         return self.w3.eth.contract(

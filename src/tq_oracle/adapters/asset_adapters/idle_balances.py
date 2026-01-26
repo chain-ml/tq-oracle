@@ -126,19 +126,23 @@ class IdleBalancesAdapter(BaseAssetAdapter):
         self._rpc_sem = asyncio.Semaphore(getattr(self.config, "max_calls", 5))
         self._rpc_delay = getattr(self.config, "rpc_delay", 0.15)  # seconds
         self._rpc_jitter = getattr(self.config, "rpc_jitter", 0.10)  # seconds
+        self._rpc_timeout = getattr(self.config, "rpc_timeout", 30.0)  # seconds
 
     @backoff.on_exception(
         backoff.expo, (ProviderConnectionError), max_time=30, jitter=backoff.full_jitter
     )
     async def _rpc(self, fn, *args, **kwargs):
-        """Throttle + backoff a single RPC."""
+        """Execute RPC call with throttling, timeout, and retry (FYEO-TQO-09)."""
         async with self._rpc_sem:
-            try:
-                return await asyncio.to_thread(fn, *args, **kwargs)
-            finally:
-                delay = self._rpc_delay + random.random() * self._rpc_jitter
-                if delay > 0:
-                    await asyncio.sleep(delay)
+            result = await asyncio.wait_for(
+                asyncio.to_thread(fn, *args, **kwargs),
+                timeout=self._rpc_timeout,
+            )
+        # Sleep outside semaphore to not block other tasks
+        delay = self._rpc_delay + random.random() * self._rpc_jitter
+        if delay > 0:
+            await asyncio.sleep(delay)
+        return result
 
     @property
     def adapter_name(self) -> str:
