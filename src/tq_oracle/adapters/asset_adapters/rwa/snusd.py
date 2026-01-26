@@ -306,8 +306,15 @@ class SNUSDAdapter(BaseAssetAdapter):
             exposure.claimable_nusd,
         )
 
-        # Return total nUSD exposure
-        assets: list[AssetData] = []
+        # Start with previous adapter results if provided (for adapter chaining)
+        assets: list[AssetData] = list(previous_assets) if previous_assets else []
+        if previous_assets:
+            logger.debug(
+                "sNUSD: starting with %d previous assets",
+                len(previous_assets),
+            )
+
+        # Add total nUSD exposure
         if exposure.total_nusd > 0:
             assets.append(
                 AssetData(

@@ -390,6 +390,17 @@ class AaveV3Adapter(BaseAssetAdapter):
             len(results),
             subvault_address,
         )
+
+        # Merge with previous adapter results if provided (for adapter chaining)
+        if previous_assets:
+            logger.debug(
+                "Aave V3%s: merging %d previous assets with %d new assets",
+                instance_label,
+                len(previous_assets),
+                len(results),
+            )
+            results = list(previous_assets) + results
+
         return results
 
     async def fetch_all_assets(self) -> list[AssetData]:
