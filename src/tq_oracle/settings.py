@@ -7,7 +7,7 @@ from tq_oracle.constants import STAKEWISE_EXIT_MAX_LOOKBACK_BLOCKS
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 try:
     import tomllib  # py311+
@@ -38,6 +38,8 @@ class Network(str, Enum):
     MAINNET = "mainnet"
     SEPOLIA = "sepolia"
     BASE = "base"
+    HYPEREVM = "hyperevm"
+    HYPERCORE = "hypercore"
 
 
 class IdleBalancesAdapterSettings(BaseModel):
@@ -162,6 +164,85 @@ class MorphoBlueAdapterSettings(BaseModel):
     # Defaults to mainnet: 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb
     markets: dict[str, dict[str, str]] = Field(default_factory=dict)
     # markets structure: { "market_name": { "market_id": "0x..." } }
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class HyperCoreVaultConfig(BaseModel):
+    """Configuration for a native Hyperliquid vault."""
+
+    vault_address: str
+    name: str | None = None  # Optional friendly name
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class HyperCoreSubAccountConfig(BaseModel):
+    """Configuration for a HyperCore sub-account."""
+
+    master_address: str
+    agent_wallet: str | None = None  # Optional - for oracle read-only
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ChainConfig(BaseModel):
+    """Configuration for a chain in multi-chain setup.
+
+    Chains can be:
+    - primary: The main chain with redemption/deposit capability
+    - satellite: Contributes to TVL only
+
+    Example TOML:
+        [[chains]]
+        name = "mainnet"
+        network = "mainnet"
+        vault_address = "0x..."
+        rpc = "https://..."
+        role = "primary"
+        required = true
+    """
+
+    name: str  # Friendly name for logging
+    network: str  # Network identifier (mainnet, hyperevm, hypercore)
+    vault_address: str | None = None
+    rpc: str | None = None  # RPC endpoint for EVM chains
+    api_url: str | None = None  # API endpoint for non-EVM chains (HyperCore)
+    block_number: int | None = None  # Optional block number for state snapshot
+    role: Literal["primary", "satellite"] = "satellite"
+    required: bool = True  # If false, chain failure doesn't block report
+    subvault_addresses: list[str] = Field(default_factory=list)
+    adapters: dict[str, Any] = Field(default_factory=dict)  # Per-chain adapter config
+    # HyperCore-specific
+    vaults: list[HyperCoreVaultConfig] = Field(default_factory=list)
+    subaccounts: list[HyperCoreSubAccountConfig] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class BridgeConfig(BaseModel):
+    """Configuration for a cross-chain bridge to track in-flight transfers.
+
+    Supported bridge types:
+    - cctp: Circle CCTP (burns on source, mints on dest)
+    - native: Native HyperEVM ↔ HyperCore transfers
+    - evm_core: HyperEVM → HyperCore via CoreDepositWallet
+
+    Example TOML:
+        [[bridges]]
+        type = "cctp"
+        source_chain = "mainnet"
+        dest_chain = "hyperevm"
+        lookback_blocks = 80
+    """
+
+    type: Literal["cctp", "native", "evm_core"]
+    source_chain: str  # Chain name (must match ChainConfig.name)
+    dest_chain: str  # Chain name (must match ChainConfig.name)
+    lookback_blocks: int = 80  # Blocks to scan for in-flight detection
+    token_messenger: str | None = None  # CCTP TokenMessenger address override
+    source_subvault: str | None = None  # Subvault address on source chain
+    dest_subvault: str | None = None  # Subvault address on dest chain
 
     model_config = ConfigDict(extra="ignore")
 
@@ -321,6 +402,14 @@ class OracleSettings(BaseSettings):
     # --- adapters (from config file only) ---
     subvault_adapters: list[dict[str, Any]] = []
     adapters: AdapterSettings = Field(default_factory=AdapterSettings)
+
+    # --- multi-chain configuration ---
+    # Primary chain for redemption/deposit (default: use single-chain mode)
+    primary_chain: str | None = None
+    # List of chains to query for TVL aggregation
+    chains: list[ChainConfig] = Field(default_factory=list)
+    # List of bridges to track for in-flight reconciliation
+    bridges: list[BridgeConfig] = Field(default_factory=list)
 
     # --- runtime computed values ---
     using_default_rpc: bool = False
@@ -529,15 +618,25 @@ class OracleSettings(BaseSettings):
         Returns:
             NetworkAssets for the configured network
         """
-        from .constants import BASE_ASSETS, ETH_MAINNET_ASSETS, SEPOLIA_ASSETS
+        from .constants import (
+            BASE_ASSETS,
+            ETH_MAINNET_ASSETS,
+            HYPEREVM_MAINNET_ASSETS,
+            SEPOLIA_ASSETS,
+        )
 
         network_assets_map = {
             Network.MAINNET: ETH_MAINNET_ASSETS,
             Network.SEPOLIA: SEPOLIA_ASSETS,
             Network.BASE: BASE_ASSETS,
+            Network.HYPEREVM: HYPEREVM_MAINNET_ASSETS,
+            # HYPERCORE doesn't use traditional assets - it's API-based
         }
 
         if self.network not in network_assets_map:
+            if self.network == Network.HYPERCORE:
+                # HyperCore uses USDC via API, return minimal asset map
+                return HYPEREVM_MAINNET_ASSETS
             raise ValueError(f"Unknown network: {self.network}")
 
         return network_assets_map[self.network]

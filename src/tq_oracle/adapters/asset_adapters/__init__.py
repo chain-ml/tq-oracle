@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .aave_v3 import AaveV3Adapter
 from .base import BaseAssetAdapter
+from .hypercore import HyperCoreAdapter
 from .idle_balances import IdleBalancesAdapter
 from .morpho_blue import MorphoBlueAdapter
 from .pendle import PendleAdapter
@@ -21,6 +22,7 @@ ADAPTER_REGISTRY: dict[str, type[BaseAssetAdapter]] = {
     "snusd": SNUSDAdapter,
     "uniswap_v3": UniswapV3Adapter,
     "uniswap_v4": UniswapV4Adapter,
+    "hypercore": HyperCoreAdapter,
 }
 
 # Adapters that support named instances (e.g., "aave_v3.spark")
@@ -89,6 +91,7 @@ __all__ = [
     "MULTI_INSTANCE_ADAPTERS",
     "AaveV3Adapter",
     "ERC4626VaultAdapter",
+    "HyperCoreAdapter",
     "IdleBalancesAdapter",
     "MorphoBlueAdapter",
     "PendleAdapter",

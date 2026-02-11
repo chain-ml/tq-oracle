@@ -194,3 +194,61 @@ L1_BLOCK_TIME = 12  # Ethereum L1 block time in seconds
 # Retry Configuration for Post-Checks
 MAX_RETRY_ATTEMPTS = 5
 RETRY_DELAY_SECONDS = 120  # 2 minutes
+
+# =============================================================================
+# HyperEVM / HyperCore Constants
+# =============================================================================
+
+# HyperEVM RPC endpoints
+HYPEREVM_MAINNET_RPC = "https://rpc.hyperliquid.xyz/evm"
+HYPEREVM_TESTNET_RPC = "https://rpc.hyperliquid-testnet.xyz/evm"
+
+# HyperCore API endpoints
+HYPERCORE_MAINNET_API = "https://api.hyperliquid.xyz"
+HYPERCORE_TESTNET_API = "https://api.hyperliquid-testnet.xyz"
+
+# USDC on HyperEVM (native Circle USDC via CCTP V2)
+USDC_HYPEREVM_MAINNET = "0xb88339CB7199b77E23DB6E890353E22632Ba630f"
+USDC_HYPEREVM_TESTNET = "0x2B3370eE501B4a559b57D449569354196457D8Ab"
+
+# HyperEVM system addresses for bridging to/from HyperCore
+HYPEREVM_USDC_SYSTEM_ADDRESS = "0x2000000000000000000000000000000000000000"
+HYPEREVM_HYPE_SYSTEM_ADDRESS = "0x2222222222222222222222222222222222222222"
+
+# CoreDepositWallet - for HyperEVM → HyperCore transfers
+CORE_DEPOSIT_WALLET_MAINNET = "0x6b9e773128f453f5c2c60935ee2de2cbc5390a24"
+
+# CoreWriter - for executing trades on HyperCore from HyperEVM
+CORE_WRITER_ADDRESS = "0x3333333333333333333333333333333333333333"
+
+# Block times in seconds
+HYPEREVM_BLOCK_TIME = 1  # HyperEVM/HyperCore block time
+HL_BLOCK_TIME = HYPEREVM_BLOCK_TIME  # Alias for backwards compatibility
+
+# CCTP lookback configuration
+CCTP_LOOKBACK_BLOCKS = 80  # ~16 minutes on L1 (80 * 12s)
+CCTP_RATE_LIMITED_LOOKBACK_BLOCKS = 80  # Same, for rate-limited RPCs
+
+# HyperCore portfolio staleness threshold
+HL_MAX_PORTFOLIO_STALENESS_SECONDS = 120  # 2 minutes
+
+# HyperEVM assets (similar structure to ETH_MAINNET_ASSETS)
+HYPEREVM_MAINNET_ASSETS: NetworkAssets = {
+    "USDC": USDC_HYPEREVM_MAINNET,
+    "USDT": None,
+    "USDS": None,
+    "ETH": None,  # No native ETH on HyperEVM
+    "WETH": None,
+    "WSTETH": None,
+    "OSETH": None,
+}
+
+HYPEREVM_TESTNET_ASSETS: NetworkAssets = {
+    "USDC": USDC_HYPEREVM_TESTNET,
+    "USDT": None,
+    "USDS": None,
+    "ETH": None,
+    "WETH": None,
+    "WSTETH": None,
+    "OSETH": None,
+}
