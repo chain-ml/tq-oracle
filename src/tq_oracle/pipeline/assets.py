@@ -466,29 +466,130 @@ async def collect_assets(ctx: PipelineContext) -> None:
         subvault_asset_map[subvault_addr.lower()] = subvault_assets
 
     # Fetch assets for extra addresses (e.g., swap module)
+    # Also run any additional adapters configured for each extra address
+    # Addresses can be in:
+    #   - extra_addresses only: runs idle_balances
+    #   - extra_address_adapters only: runs ONLY configured adapters (like a subvault)
+    #   - both: runs idle_balances + additional adapters
     extra_addresses_assets: dict[str, list[AssetData]] = {}
+
+    # Get extra_address_adapters config (maps address -> list of adapter names)
+    # Normalize keys to lowercase for consistent lookup
+    extra_addr_adapters_cfg = {
+        k.lower(): v for k, v in s.adapters.idle_balances.extra_address_adapters.items()
+    }
+
+    # Collect all extra addresses from both sources
+    idle_extra_addrs: set[str] = set()
     if should_run_default_idle_balances and idle_vault_adapter:
-        extra_addrs = (
-            idle_vault_adapter._extra_addresses
-            if hasattr(idle_vault_adapter, "_extra_addresses")
-            else []
-        )
-        if extra_addrs:
-            log.info("Fetching assets for %d extra addresses...", len(extra_addrs))
-            for extra_addr in extra_addrs:
-                try:
-                    extra_assets = await idle_vault_adapter.fetch_assets(extra_addr)
-                    if extra_assets:
-                        log.info(
-                            f"  extra_address {extra_addr}: {len(extra_assets)} assets"
-                        )
-                        extra_addresses_assets[extra_addr.lower()] = extra_assets
-                except Exception as e:
-                    log.error(
-                        f"  Failed to fetch assets for extra address {extra_addr}: {e}"
+        idle_extra_addrs = {
+            addr.lower()
+            for addr in (
+                idle_vault_adapter._extra_addresses
+                if hasattr(idle_vault_adapter, "_extra_addresses")
+                else []
+            )
+        }
+
+    # Addresses only in extra_address_adapters (not in extra_addresses)
+    adapter_only_addrs = {
+        addr.lower(): adapter_list
+        for addr, adapter_list in extra_addr_adapters_cfg.items()
+        if addr.lower() not in idle_extra_addrs
+    }
+
+    # Process addresses that have idle_balances (from extra_addresses)
+    if should_run_default_idle_balances and idle_vault_adapter and idle_extra_addrs:
+        extra_addrs = idle_vault_adapter._extra_addresses
+        log.info("Fetching assets for %d extra addresses (with idle_balances)...", len(extra_addrs))
+        for extra_addr in extra_addrs:
+            try:
+                extra_assets = await idle_vault_adapter.fetch_assets(extra_addr)
+                if extra_assets:
+                    log.info(
+                        f"  extra_address {extra_addr}: {len(extra_assets)} idle assets"
                     )
 
+                # Check if additional adapters are configured for this extra address
+                extra_addr_lower = extra_addr.lower()
+                adapter_names = extra_addr_adapters_cfg.get(extra_addr_lower, [])
+                accumulated_assets: list[AssetData] | None = None
+
+                if adapter_names:
+                    log.info(
+                        f"  Running {len(adapter_names)} additional adapter(s) on {extra_addr}: {adapter_names}"
+                    )
+
+                    for adapter_name in adapter_names:
+                        try:
+                            base_name, instance_name = parse_adapter_name(
+                                adapter_name
+                            )
+                            adapter_class = get_adapter_class(adapter_name)
+
+                            # Get adapter defaults from config
+                            if base_name == "aave_v3":
+                                instance_config = s.adapters.get_aave_v3_config(
+                                    instance_name
+                                )
+                                if instance_config:
+                                    defaults = _sanitize_adapter_kwargs(
+                                        instance_config.model_dump(exclude_none=True)
+                                    )
+                                else:
+                                    defaults = adapter_defaults.get(base_name, {})
+                            else:
+                                defaults = adapter_defaults.get(base_name, {})
+
+                            adapter_kwargs = _sanitize_adapter_kwargs(defaults)
+                            if adapter_kwargs:
+                                adapter = adapter_class(s, **adapter_kwargs)
+                            else:
+                                adapter = adapter_class(s)
+
+                            # Run adapter with previous assets (for chaining)
+                            new_assets = await adapter.fetch_assets(
+                                extra_addr, accumulated_assets
+                            )
+                            accumulated_assets = new_assets
+                            log.debug(
+                                f"    {adapter_name} returned {len(new_assets) if new_assets else 0} assets"
+                            )
+                        except Exception as adapter_err:
+                            log.error(
+                                f"    Adapter {adapter_name} failed on {extra_addr}: {adapter_err}"
+                            )
+                            raise
+
+                    # Concatenate adapter results to asset_data
+                    if accumulated_assets:
+                        asset_data.append(accumulated_assets)
+                        log.info(
+                            f"  Added {len(accumulated_assets)} adapter-discovered assets for {extra_addr}"
+                        )
+
+                # Combine idle_balances + adapter results for breakdown
+                combined_assets = list(extra_assets) if extra_assets else []
+                if accumulated_assets:
+                    combined_assets.extend(accumulated_assets)
+
+                if combined_assets:
+                    log.info(
+                        f"  extra_address {extra_addr}: {len(combined_assets)} total assets (idle: {len(extra_assets) if extra_assets else 0}, adapters: {len(accumulated_assets) if accumulated_assets else 0})"
+                    )
+                    extra_addresses_assets[extra_addr_lower] = combined_assets
+            except Exception as e:
+                log.error(
+                    f"  Failed to fetch assets for extra address {extra_addr}: {e}"
+                )
+
     log.info("Computing aggregated assets...")
+    # Log final asset_data before aggregation
+    log.debug("Final asset_data has %d lists:", len(asset_data))
+    for i, assets_list in enumerate(asset_data):
+        log.debug("  List %d: %d assets", i, len(assets_list))
+        for asset in assets_list:
+            log.debug("    - %s: %s", asset.asset_address, asset.amount)
     aggregated = await compute_total_aggregated_assets(asset_data)
     log.debug("Total aggregated assets: %d", len(aggregated.assets))
 

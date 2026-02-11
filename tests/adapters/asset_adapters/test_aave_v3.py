@@ -297,6 +297,58 @@ class TestFetchAssets:
         assert usdc_result.amount == 1000000000  # Positive (supply)
         assert usdt_result.amount == -500000000  # Negative (borrow)
 
+    @pytest.mark.asyncio
+    async def test_merges_previous_assets(
+        self, mocker, config, subvault_address, usdc_address, usdt_address
+    ):
+        """Should merge previous adapter assets when chaining adapters."""
+        adapter = AaveV3Adapter(config)
+        adapter.supply_tokens = {"USDC": "0xaUSDC"}
+        adapter.borrow_tokens = {}
+
+        # Mock this adapter's own assets
+        mocker.patch.object(adapter, "_balance_of", return_value=1000000)
+        mocker.patch.object(adapter, "_get_underlying_asset", return_value=usdc_address)
+
+        # Previous assets from another adapter in the chain
+        previous_assets = [
+            AssetData(asset_address=usdt_address, amount=2000000),
+            AssetData(asset_address="0xSomeOtherToken", amount=500000),
+        ]
+
+        result = await adapter.fetch_assets(subvault_address, previous_assets)
+
+        # Should have previous assets + this adapter's assets
+        assert len(result) == 3
+
+        # Previous assets should be preserved
+        usdt_result = next(r for r in result if r.asset_address == usdt_address)
+        assert usdt_result.amount == 2000000
+
+        other_result = next(r for r in result if r.asset_address == "0xSomeOtherToken")
+        assert other_result.amount == 500000
+
+        # This adapter's assets should be added
+        usdc_result = next(r for r in result if r.asset_address == usdc_address)
+        assert usdc_result.amount == 1000000
+
+    @pytest.mark.asyncio
+    async def test_returns_only_own_assets_when_no_previous(
+        self, mocker, config, subvault_address, usdc_address
+    ):
+        """Without previous_assets, should return only own assets."""
+        adapter = AaveV3Adapter(config)
+        adapter.supply_tokens = {"USDC": "0xaUSDC"}
+        adapter.borrow_tokens = {}
+
+        mocker.patch.object(adapter, "_balance_of", return_value=1000000)
+        mocker.patch.object(adapter, "_get_underlying_asset", return_value=usdc_address)
+
+        result = await adapter.fetch_assets(subvault_address, previous_assets=None)
+
+        assert len(result) == 1
+        assert result[0].asset_address == usdc_address
+
 
 class TestDecimalHandling:
     """Tests verifying decimal handling for different assets."""

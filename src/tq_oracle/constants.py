@@ -41,6 +41,7 @@ STRETH_ADDRESSES: dict[str, StrEthAddresses] = {
 }
 
 ETH_ASSET = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+ETH_ADDRESS = ETH_ASSET  # Alias for compatibility
 # Native ETH as address(0) - used by Uniswap V4
 NATIVE_ETH_ADDRESS = "0x0000000000000000000000000000000000000000"
 

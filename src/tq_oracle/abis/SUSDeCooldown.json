@@ -1,0 +1,28 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "cooldowns",
+      "outputs": [
+        {
+          "internalType": "uint104",
+          "name": "cooldownEnd",
+          "type": "uint104"
+        },
+        {
+          "internalType": "uint152",
+          "name": "underlyingAmount",
+          "type": "uint152"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

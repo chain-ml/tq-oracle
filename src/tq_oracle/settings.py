@@ -46,6 +46,9 @@ class IdleBalancesAdapterSettings(BaseModel):
     extra_tokens: dict[str, str] = Field(default_factory=dict)
     extra_addresses: list[str] = Field(default_factory=list)
     non_tvl_tokens: dict[str, str] = Field(default_factory=dict)
+    # Map extra_address -> list of adapter names to run after idle_balances
+    # e.g., { "0x17aeAbfD3cB214A8757bF07D2E248d526c8C4809": ["erc4626", "snusd"] }
+    extra_address_adapters: dict[str, list[str]] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -93,7 +96,12 @@ class ERC4626AdapterSettings(BaseModel):
     """Configuration options for ERC4626 vault adapter defaults."""
 
     vaults: dict[str, dict[str, str]] = Field(default_factory=dict)
-    # vaults structure: { "vault_name": { "vault_token": "0x...", "underlying_asset": "0x..." } }
+    # vaults structure: { "vault_name": {
+    #   "vault_token": "0x...",
+    #   "underlying_asset": "0x...",
+    #   "market_discount": 100  # optional: discount in tenths of bps (default: 0)
+    #                           # e.g., 100 = 10 bps, 5 = 0.5 bps
+    # } }
 
     model_config = ConfigDict(extra="ignore")
 
@@ -104,6 +112,26 @@ class SNUSDAdapterSettings(BaseModel):
     snusd_token: str | None = None
     nusd_token: str | None = None
     cooldown_period: int | None = None  # Optional, defaults to 10 days (864000s)
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class WstETHWithdrawalSettings(BaseModel):
+    """Configuration options for wstETH withdrawal queue adapter."""
+
+    withdrawal_queue: str | None = None  # Lido withdrawal queue address
+    # Defaults to mainnet: 0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class SUSDeCooldownSettings(BaseModel):
+    """Configuration options for sUSDe cooldown adapter."""
+
+    susde_token: str | None = None  # sUSDe token address
+    # Defaults to mainnet: 0x9D39A5DE30e57443BfF2A8307A4256c8797A3497
+    usde_token: str | None = None  # USDe underlying token address
+    # Defaults to mainnet: 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3
 
     model_config = ConfigDict(extra="ignore")
 
@@ -127,6 +155,17 @@ class UniswapV4AdapterSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class MorphoBlueAdapterSettings(BaseModel):
+    """Configuration options for Morpho Blue adapter defaults."""
+
+    morpho_address: str | None = None  # Morpho Blue contract address
+    # Defaults to mainnet: 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb
+    markets: dict[str, dict[str, str]] = Field(default_factory=dict)
+    # markets structure: { "market_name": { "market_id": "0x..." } }
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class AdapterSettings(BaseModel):
     stakewise: StakewiseAdapterSettings = Field(
         default_factory=StakewiseAdapterSettings
@@ -141,11 +180,20 @@ class AdapterSettings(BaseModel):
     pendle: PendleAdapterSettings = Field(default_factory=PendleAdapterSettings)
     erc4626: ERC4626AdapterSettings = Field(default_factory=ERC4626AdapterSettings)
     snusd: SNUSDAdapterSettings = Field(default_factory=SNUSDAdapterSettings)
+    wsteth_withdrawal: WstETHWithdrawalSettings = Field(
+        default_factory=WstETHWithdrawalSettings
+    )
+    susde_cooldown: SUSDeCooldownSettings = Field(
+        default_factory=SUSDeCooldownSettings
+    )
     uniswap_v3: UniswapV3AdapterSettings = Field(
         default_factory=UniswapV3AdapterSettings
     )
     uniswap_v4: UniswapV4AdapterSettings = Field(
         default_factory=UniswapV4AdapterSettings
+    )
+    morpho_blue: MorphoBlueAdapterSettings = Field(
+        default_factory=MorphoBlueAdapterSettings
     )
 
     model_config = ConfigDict(extra="ignore")
@@ -265,6 +313,7 @@ class OracleSettings(BaseSettings):
     rpc_max_concurrent_calls: int = 5
     rpc_delay: float = 0.15
     rpc_jitter: float = 0.10
+    rpc_timeout: float = 30.0  # Timeout in seconds for RPC calls (FYEO-TQO-09)
 
     # --- logging ---
     log_level: str = "INFO"

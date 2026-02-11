@@ -34,6 +34,10 @@ PENDLE_MARKET_ABI_PATH = ABIS_DIR / "PendleMarket.json"
 CHAINLINK_FEED_ABI_PATH = ABIS_DIR / "ChainlinkFeed.json"
 UNISWAP_V4_POSITION_MANAGER_ABI_PATH = ABIS_DIR / "UniswapV4PositionManager.json"
 UNISWAP_V4_STATE_VIEW_ABI_PATH = ABIS_DIR / "UniswapV4StateView.json"
+LIDO_WITHDRAWAL_QUEUE_ABI_PATH = ABIS_DIR / "LidoWithdrawalQueue.json"
+SUSDE_COOLDOWN_ABI_PATH = ABIS_DIR / "SUSDeCooldown.json"
+MORPHO_BLUE_ABI_PATH = ABIS_DIR / "MorphoBlue.json"
+MORPHO_IRM_ABI_PATH = ABIS_DIR / "MorphoIRM.json"
 
 
 def load_abi(path: str | Path) -> list[dict]:
@@ -148,6 +152,26 @@ def load_uniswap_v4_position_manager_abi() -> list[dict]:
 def load_uniswap_v4_state_view_abi() -> list[dict]:
     """Load the Uniswap V4 StateView ABI."""
     return load_abi(UNISWAP_V4_STATE_VIEW_ABI_PATH)
+
+
+def load_lido_withdrawal_queue_abi() -> list[dict]:
+    """Load the Lido Withdrawal Queue ABI."""
+    return load_abi(LIDO_WITHDRAWAL_QUEUE_ABI_PATH)
+
+
+def load_susde_cooldown_abi() -> list[dict]:
+    """Load the sUSDe Cooldown ABI."""
+    return load_abi(SUSDE_COOLDOWN_ABI_PATH)
+
+
+def load_morpho_blue_abi() -> list[dict]:
+    """Load the Morpho Blue ABI."""
+    return load_abi(MORPHO_BLUE_ABI_PATH)
+
+
+def load_morpho_irm_abi() -> list[dict]:
+    """Load the Morpho IRM ABI."""
+    return load_abi(MORPHO_IRM_ABI_PATH)
 
 
 def get_oracle_address_from_vault(settings: OracleSettings) -> ChecksumAddress:

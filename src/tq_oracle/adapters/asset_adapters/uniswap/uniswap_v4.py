@@ -6,6 +6,7 @@ This adapter handles Uniswap V4 positions by:
 3. Fetching liquidity via PositionManager.getPositionLiquidity(tokenId)
 4. Reading slot0 via StateView.getSlot0(poolId) where poolId = keccak256(abi.encode(poolKey))
 5. Calculating withdrawable amounts for both tokens (using V3-style concentrated liquidity math)
+6. Calculating uncollected fees via StateView.getFeeGrowthInside and getPositionInfo
 """
 
 from __future__ import annotations
@@ -296,6 +297,86 @@ class UniswapV4Adapter(BaseAssetAdapter):
         tick = int(slot0[1])
         return sqrt_price_x96, tick
 
+    async def _get_uncollected_fees(
+        self,
+        pool_id: bytes,
+        tick_lower: int,
+        tick_upper: int,
+        token_id: int,
+        liquidity: int,
+    ) -> tuple[int, int]:
+        """Calculate uncollected fees for a V4 position.
+
+        Uses the formula: fees = (feeGrowthCurrent - feeGrowthLast) * liquidity / Q128
+
+        Args:
+            pool_id: Pool identifier (keccak256 of poolKey)
+            tick_lower: Position lower tick
+            tick_upper: Position upper tick
+            token_id: NFT token ID (used as salt)
+            liquidity: Position liquidity
+
+        Returns:
+            Tuple of (uncollected_fee0, uncollected_fee1)
+        """
+        if liquidity == 0:
+            return 0, 0
+
+        state_view = self._state_view_contract()
+
+        # Get current fee growth inside the tick range
+        fee_growth_current = await self._rpc(
+            state_view.functions.getFeeGrowthInside(
+                pool_id,
+                tick_lower,
+                tick_upper,
+            ).call,
+            block_identifier=self.block_number,
+        )
+        fee_growth_inside_0_x128 = int(fee_growth_current[0])
+        fee_growth_inside_1_x128 = int(fee_growth_current[1])
+
+        # Get position's last recorded fee growth
+        # In V4, PositionManager is the owner, and tokenId is the salt
+        salt = token_id.to_bytes(32, "big")
+        position_info = await self._rpc(
+            state_view.functions.getPositionInfo(
+                pool_id,
+                Web3.to_checksum_address(self.position_manager),
+                tick_lower,
+                tick_upper,
+                salt,
+            ).call,
+            block_identifier=self.block_number,
+        )
+        # position_info returns (liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128)
+        fee_growth_inside_0_last_x128 = int(position_info[1])
+        fee_growth_inside_1_last_x128 = int(position_info[2])
+
+        # Calculate uncollected fees: (current - last) * liquidity / Q128
+        # Handle potential underflow from fee growth wraparound
+        Q128 = 2**128
+
+        fee_growth_delta_0 = (fee_growth_inside_0_x128 - fee_growth_inside_0_last_x128) % (
+            2**256
+        )
+        fee_growth_delta_1 = (fee_growth_inside_1_x128 - fee_growth_inside_1_last_x128) % (
+            2**256
+        )
+
+        uncollected_fee_0 = (fee_growth_delta_0 * liquidity) // Q128
+        uncollected_fee_1 = (fee_growth_delta_1 * liquidity) // Q128
+
+        if uncollected_fee_0 > 0 or uncollected_fee_1 > 0:
+            logger.debug(
+                "Uniswap V4 position %d: uncollected fees fee0=%d fee1=%d",
+                token_id,
+                uncollected_fee_0,
+                uncollected_fee_1,
+            )
+
+        return uncollected_fee_0, uncollected_fee_1
+
     # --- math copied from your v3 adapter (unchanged) ---
 
     def _get_sqrt_ratio_at_tick(self, tick: int) -> int:
@@ -432,7 +513,7 @@ class UniswapV4Adapter(BaseAssetAdapter):
             # 4) Slot0 from StateView
             sqrt_price_x96, current_tick = await self._get_slot0(pool_id)
 
-            # 5) Amounts
+            # 5) Amounts from liquidity
             amount0, amount1 = self._calculate_amounts_from_liquidity(
                 liquidity,
                 sqrt_price_x96,
@@ -441,13 +522,26 @@ class UniswapV4Adapter(BaseAssetAdapter):
                 current_tick,
             )
 
+            # 6) Add uncollected fees
+            uncollected_fee_0, uncollected_fee_1 = await self._get_uncollected_fees(
+                pool_id,
+                tick_lower,
+                tick_upper,
+                token_id,
+                liquidity,
+            )
+            amount0 += uncollected_fee_0
+            amount1 += uncollected_fee_1
+
             logger.info(
-                "Uniswap V4 position %d: c0=%s amt0=%d c1=%s amt1=%d fee=%d liq=%d ticks=[%d,%d] curTick=%d hooks=%s poolId=%s",
+                "Uniswap V4 position %d: c0=%s amt0=%d (fees=%d) c1=%s amt1=%d (fees=%d) fee=%d liq=%d ticks=[%d,%d] curTick=%d hooks=%s poolId=%s",
                 token_id,
                 currency0,
                 amount0,
+                uncollected_fee_0,
                 currency1,
                 amount1,
+                uncollected_fee_1,
                 int(fee),
                 int(liquidity),
                 int(tick_lower),
