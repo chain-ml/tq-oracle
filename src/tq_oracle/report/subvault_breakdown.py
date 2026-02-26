@@ -66,14 +66,16 @@ async def log_subvault_breakdown(
     assets: list[AssetData],
     prices: PriceData,
     config: OracleSettings,
+    base_asset_decimals: int = 18,
 ) -> None:
     """Log detailed asset breakdown for a single subvault.
 
     Args:
         subvault_address: Address of the subvault
         assets: List of assets held by this subvault
-        prices: Price data for calculating ETH values
+        prices: Price data for calculating base asset values
         config: Oracle settings for token decimals lookup
+        base_asset_decimals: Decimals of the vault's base asset
     """
     if not assets:
         logger.info("  [%s] No assets", subvault_address[:10])
@@ -86,7 +88,8 @@ async def log_subvault_breakdown(
 
     logger.info("  ┌─ Subvault: %s", subvault_address)
 
-    total_eth_value = 0
+    base_asset_addr = prices.base_asset.lower()
+    total_base_value = 0
     for asset_addr, amounts in sorted(asset_groups.items()):
         total_amount = sum(amounts)
 
@@ -100,16 +103,14 @@ async def log_subvault_breakdown(
         # Get token decimals for proper display formatting
         decimals = await get_token_decimals(asset_addr, config)
 
-        # Calculate ETH value
-        # Special case: ETH is the base asset with 1:1 price
-        eth_address = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-        if asset_addr == eth_address:
-            # ETH has 1:1 price with itself
-            eth_value = total_amount
-            total_eth_value += eth_value
+        # Calculate value in base asset
+        if asset_addr == base_asset_addr:
+            # Base asset has 1:1 price with itself
+            base_value = total_amount
+            total_base_value += base_value
         else:
             # Try both lowercase and original case for price lookup
-            eth_value = 0
+            base_value = 0
             price_key = None
             for key in prices.prices.keys():
                 if key.lower() == asset_addr:
@@ -118,12 +119,11 @@ async def log_subvault_breakdown(
 
             if price_key:
                 price = prices.prices[price_key]
-                # Price is in 18 decimals (ETH per token with 18 decimals)
-                # We need to normalize: amount_in_18_decimals * price / 10^18
-                # amount_in_18_decimals = total_amount * 10^(18-decimals)
+                # Price is in D18 (base asset per token with 18-decimal normalization)
+                # Normalize: amount_in_18_decimals * price / 10^18
                 amount_normalized = total_amount * (10 ** (18 - decimals))
-                eth_value = (amount_normalized * price) // (10**18)
-                total_eth_value += eth_value
+                base_value = (amount_normalized * price) // (10**18)
+                total_base_value += base_value
             else:
                 # Asset has no price data
                 logger.debug(f"No price found for asset {asset_addr}")
@@ -137,19 +137,19 @@ async def log_subvault_breakdown(
         amount_decimal = total_amount / (
             10**decimals
         )  # Use correct decimals for display
-        eth_value_decimal = eth_value / 10**18
+        base_value_decimal = base_value / 10**base_asset_decimals
 
         # Show negative amounts differently
         sign = "-" if total_amount < 0 else " "
 
         logger.info(
-            "  │  %s %s %s (%.6f ETH) [%s]",
+            "  │  %s %s %s (%.6f base) [%s]",
             sign,
             display_name.ljust(20),
             f"{abs(amount_decimal):,.6f}".rjust(20),
-            eth_value_decimal,
+            base_value_decimal,
             asset_addr,
         )
 
-    total_eth_decimal = total_eth_value / 10**18
-    logger.info("  └─ Total Value: %.6f ETH", total_eth_decimal)
+    total_base_decimal = total_base_value / 10**base_asset_decimals
+    logger.info("  └─ Total Value: %.6f (base asset)", total_base_decimal)

@@ -16,6 +16,7 @@ class OracleReport:
     total_assets: dict[str, int]
     final_prices: dict[str, int]
     asset_decimals: dict[str, int] = field(default_factory=dict)
+    base_asset_decimals: int = 18
 
     def to_dict(self) -> dict[str, object]:
         """Convert report to dictionary format."""
@@ -29,16 +30,18 @@ async def generate_report(
     aggregated_assets: AggregatedAssets,
     final_prices: FinalPrices,
     asset_decimals: dict[str, int] | None = None,
+    base_asset_decimals: int = 18,
 ) -> OracleReport:
     """Generate an oracle report from processed data.
 
     Args:
         vault_address: The vault contract address
         base_asset: The address of the base asset used for reporting
-        tvl_in_base_asset: Total value locked expressed in the base asset (18 decimals)
+        tvl_in_base_asset: Total value locked expressed in the base asset (native decimals)
         aggregated_assets: Aggregated asset balances per asset address
         final_prices: Final oracle prices
         asset_decimals: Token decimals per asset address (from price adapters)
+        base_asset_decimals: Decimals of the vault's base asset
 
     Returns:
         Complete oracle report ready for publishing
@@ -52,4 +55,5 @@ async def generate_report(
         total_assets=aggregated_assets.assets,
         final_prices=final_prices.prices,
         asset_decimals=asset_decimals or {},
+        base_asset_decimals=base_asset_decimals,
     )

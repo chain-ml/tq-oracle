@@ -227,9 +227,9 @@ HL_BLOCK_TIME = HYPEREVM_BLOCK_TIME  # Alias for backwards compatibility
 ARBITRUM_BLOCK_TIME = 1  # Arbitrum L2 (~0.25s actual, use 1 for safety)
 BASE_BLOCK_TIME = 2  # Base L2 block time
 
-# CCTP lookback configuration
-CCTP_LOOKBACK_BLOCKS = 80  # ~16 minutes on L1 (80 * 12s)
-CCTP_RATE_LIMITED_LOOKBACK_BLOCKS = 80  # Same, for rate-limited RPCs
+# CCTP lookback configuration (legacy, prefer BridgeConfig.lookback_blocks)
+CCTP_LOOKBACK_BLOCKS = 300  # ~60 minutes on L1 (300 * 12s)
+CCTP_RATE_LIMITED_LOOKBACK_BLOCKS = 300  # Same, for rate-limited RPCs
 
 # HyperCore portfolio staleness threshold
 HL_MAX_PORTFOLIO_STALENESS_SECONDS = 120  # 2 minutes

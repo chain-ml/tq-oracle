@@ -11,8 +11,8 @@ Returns USDC-denominated NAV as AssetData for TVL aggregation.
 from __future__ import annotations
 
 import logging
-import math
 import time
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 USDC_DECIMALS = 6
 TARGET_DECIMALS = 18
 DECIMAL_MULTIPLIER = 10 ** (TARGET_DECIMALS - USDC_DECIMALS)
+USDC_DECIMAL_SCALE = Decimal(10**USDC_DECIMALS)
+
+# HTTP request timeout (seconds)
+API_TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
 class HyperCoreAdapter(BaseAssetAdapter):
@@ -124,7 +128,7 @@ class HyperCoreAdapter(BaseAssetAdapter):
             "user": address,
         }
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=API_TIMEOUT) as session:
             async with session.post(url, json=payload) as response:
                 if response.status != 200:
                     raise ValueError(
@@ -173,7 +177,7 @@ class HyperCoreAdapter(BaseAssetAdapter):
             raise ValueError(f"Empty accountValueHistory for {address}")
 
         # Parse and validate history points
-        clean_points: list[tuple[int, float]] = []
+        clean_points: list[tuple[int, Decimal]] = []
         for point in account_history:
             if not isinstance(point, (list, tuple)) or len(point) < 2:
                 continue
@@ -198,13 +202,13 @@ class HyperCoreAdapter(BaseAssetAdapter):
                 f"(max: {self.max_staleness_seconds}s)"
             )
 
-        # Convert to wei (18 decimals)
-        # API returns value in USDC (float), we need wei
-        nav_usdc_6_decimals = int(latest_value * (10**USDC_DECIMALS))
+        # Convert to wei (18 decimals) using Decimal for precision
+        # API returns value as string (USDC), we parse with Decimal to avoid float loss
+        nav_usdc_6_decimals = int(latest_value * USDC_DECIMAL_SCALE)
         nav_wei = nav_usdc_6_decimals * DECIMAL_MULTIPLIER
 
         logger.debug(
-            "HyperCore %s: NAV=%.2f USDC (age: %.0fs)",
+            "HyperCore %s: NAV=%s USDC (age: %.0fs)",
             address[:10],
             latest_value,
             age_seconds,
@@ -214,7 +218,7 @@ class HyperCoreAdapter(BaseAssetAdapter):
 
     def _parse_history_point(
         self, ts: Any, value_str: Any
-    ) -> tuple[int, float] | None:
+    ) -> tuple[int, Decimal] | None:
         """Parse a single history point.
 
         Args:
@@ -222,14 +226,14 @@ class HyperCoreAdapter(BaseAssetAdapter):
             value_str: Value string
 
         Returns:
-            Tuple of (timestamp_ms, value) or None if invalid
+            Tuple of (timestamp_ms, Decimal value) or None if invalid
         """
         try:
             ts_ms = int(ts)
-            value = float(value_str)
-            if math.isfinite(value) and value >= 0:
+            value = Decimal(str(value_str))
+            if value.is_finite() and value >= 0:
                 return ts_ms, value
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError, InvalidOperation) as e:
             logger.debug(f"Skipping invalid history point: {e}")
         return None
 
@@ -243,6 +247,9 @@ class HyperCoreAdapter(BaseAssetAdapter):
 
         Returns:
             Vault equity in wei (18 decimals)
+
+        Raises:
+            ValueError: If vault data is invalid or stale
         """
         url = f"{self.api_url}/info"
         payload = {
@@ -250,7 +257,7 @@ class HyperCoreAdapter(BaseAssetAdapter):
             "vaultAddress": vault_address,
         }
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=API_TIMEOUT) as session:
             async with session.post(url, json=payload) as response:
                 if response.status != 200:
                     raise ValueError(
@@ -273,17 +280,28 @@ class HyperCoreAdapter(BaseAssetAdapter):
             # Vault has portfolio data
             equity_str = portfolio.get("equity", "0")
 
+        # Check staleness via lastUpdateTime if available
+        last_update_ms = data.get("lastUpdateTime")
+        if last_update_ms is not None:
+            now_ms = int(time.time() * 1000)
+            age_seconds = (now_ms - int(last_update_ms)) / 1000
+            if age_seconds > self.max_staleness_seconds:
+                raise ValueError(
+                    f"Vault data for {vault_address} is stale: {age_seconds:.0f}s old "
+                    f"(max: {self.max_staleness_seconds}s)"
+                )
+
         try:
-            equity = float(equity_str)
-        except (TypeError, ValueError):
+            equity = Decimal(str(equity_str))
+        except (TypeError, ValueError, InvalidOperation):
             raise ValueError(f"Invalid equity value for vault {vault_address}: {equity_str}")
 
-        # Convert to wei
-        nav_usdc_6_decimals = int(equity * (10**USDC_DECIMALS))
+        # Convert to wei using Decimal for precision
+        nav_usdc_6_decimals = int(equity * USDC_DECIMAL_SCALE)
         nav_wei = nav_usdc_6_decimals * DECIMAL_MULTIPLIER
 
         logger.info(
-            "HyperCore vault %s: equity=%.2f USDC",
+            "HyperCore vault %s: equity=%s USDC",
             vault_address[:10],
             equity,
         )

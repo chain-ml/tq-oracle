@@ -59,7 +59,9 @@ def encode_submit_reports(
     # Apply decimal scaling: price * 10^(36 - 2*decimals)
     # For 18-decimal tokens: no change (10^0 = 1)
     # For 6-decimal tokens: multiply by 10^24
-    scaled_prices = _apply_decimal_scaling(filtered_prices, report.asset_decimals)
+    scaled_prices = _apply_decimal_scaling(
+        filtered_prices, report.asset_decimals, default_decimals=report.base_asset_decimals
+    )
 
     reports_array: list[tuple[ChecksumAddress, int]] = [
         (w3.to_checksum_address(asset_addr), price_d18)
@@ -89,6 +91,7 @@ def encode_submit_reports(
 def _apply_decimal_scaling(
     prices: dict[str, int],
     asset_decimals: dict[str, int],
+    default_decimals: int = 18,
 ) -> dict[str, int]:
     """Apply decimal scaling to prices for submitReports.
 
@@ -99,6 +102,7 @@ def _apply_decimal_scaling(
     Args:
         prices: Asset address -> price (D18) mapping
         asset_decimals: Asset address -> token decimals mapping
+        default_decimals: Fallback decimals if asset not in asset_decimals
 
     Returns:
         Prices with decimal scaling applied
@@ -106,7 +110,9 @@ def _apply_decimal_scaling(
     scaled: dict[str, int] = {}
 
     for asset_addr, price_d18 in prices.items():
-        decimals = asset_decimals.get(asset_addr.lower(), asset_decimals.get(asset_addr, 18))
+        decimals = asset_decimals.get(
+            asset_addr.lower(), asset_decimals.get(asset_addr, default_decimals)
+        )
         scale_exponent = 36 - 2 * decimals
 
         if scale_exponent == 0:

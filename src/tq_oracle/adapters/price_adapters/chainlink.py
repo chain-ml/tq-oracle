@@ -1,7 +1,11 @@
-"""Chainlink price adapter for stable USD to ETH conversions.
+"""Chainlink price adapter for stable USD pricing.
 
-This adapter provides more stable USD/stablecoin pricing by using Chainlink's
-ETH/USD oracle instead of relying on potentially noisy DEX bid-ask spreads.
+This adapter provides more stable USD/stablecoin pricing by using Chainlink
+oracle feeds instead of relying on potentially noisy DEX bid-ask spreads.
+
+Supports two modes:
+- ETH base asset: Uses ETH/USD feed, inverts to USD/ETH for stablecoins
+- Non-ETH base asset: Uses both ETH/USD and BASE/USD feeds for two-hop pricing
 """
 
 from __future__ import annotations
@@ -23,21 +27,18 @@ logger = logging.getLogger(__name__)
 
 
 class ChainlinkAdapter(BasePriceAdapter):
-    """Adapter for pricing USD stablecoins using Chainlink ETH/USD oracle.
+    """Adapter for pricing USD stablecoins using Chainlink oracle feeds.
 
     This adapter:
     1. Reads Chainlink ETH/USD price feed (e.g., 1 ETH = $3000)
-    2. Inverts it to get USD in ETH (e.g., 1 USD = 0.000333 ETH)
-    3. Applies this price to configured stablecoins (USDC, USDT, DAI, etc.)
-
-    Benefits over CoW Swap for stablecoins:
-    - More stable pricing (oracle vs. bid-ask spread)
-    - Less susceptible to manipulation
-    - Consistent across all USD stablecoins
+    2. When base asset is ETH: inverts to USD/ETH for stablecoins
+    3. When base asset is non-ETH: uses a separate BASE/USD feed for two-hop
+       pricing (USD → BASE) for stablecoins
 
     Configuration:
         chainlink_enabled: bool = True
         chainlink_eth_usd_feed: str = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+        chainlink_base_usd_feed: str | None = None  # For non-ETH base assets
         chainlink_stablecoins: list[str] = ["0xUSDC", "0xUSDT", "0xDAI"]
     """
 
@@ -71,6 +72,9 @@ class ChainlinkAdapter(BasePriceAdapter):
                 return
             self.eth_usd_feed = CHAINLINK_FEEDS[network_key]
 
+        # Optional BASE/USD feed for non-ETH base assets
+        self.base_usd_feed: str | None = config.chainlink_base_usd_feed
+
         # Get stablecoins to price
         self.stablecoins = set(addr.lower() for addr in config.chainlink_stablecoins)
 
@@ -91,15 +95,13 @@ class ChainlinkAdapter(BasePriceAdapter):
         # Staleness threshold
         self.staleness_threshold = config.chainlink_staleness_threshold
 
-        # Get ETH address for base asset validation
-        eth_address = config.assets["ETH"]
-        if eth_address is None:
-            raise ValueError("ETH address is required for Chainlink adapter")
-        self.eth_address = eth_address
+        # Get ETH address (may be None on non-ETH networks)
+        self.eth_address = config.assets.get("ETH")
 
         logger.info(
-            "Chainlink adapter initialized: feed=%s, stablecoins=%d",
+            "Chainlink adapter initialized: eth_usd_feed=%s, base_usd_feed=%s, stablecoins=%d",
             self.eth_usd_feed,
+            self.base_usd_feed or "none",
             len(self.stablecoins),
         )
 
@@ -140,19 +142,23 @@ class ChainlinkAdapter(BasePriceAdapter):
 
         return decimals
 
-    async def _get_eth_usd_price(self) -> tuple[int, int]:
-        """Get ETH/USD price from Chainlink oracle.
+    async def _get_feed_price(self, feed_address: str, label: str) -> tuple[int, int]:
+        """Get price from a Chainlink oracle feed.
+
+        Args:
+            feed_address: Chainlink feed contract address
+            label: Human-readable label for logging (e.g., "ETH/USD", "XAUT/USD")
 
         Returns:
             Tuple of (price, decimals)
-            - price: ETH price in USD (e.g., 3000 * 10^8 for $3000)
+            - price: Asset price in USD (e.g., 3000 * 10^8 for $3000)
             - decimals: Feed decimals (typically 8)
 
         Raises:
             ValueError: If price data is invalid, stale, or round is incomplete
         """
         contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(self.eth_usd_feed),
+            address=Web3.to_checksum_address(feed_address),
             abi=load_chainlink_feed_abi(),
         )
 
@@ -177,18 +183,18 @@ class ChainlinkAdapter(BasePriceAdapter):
 
         # Validation 1: Check price is positive
         if answer <= 0:
-            raise ValueError(f"Invalid Chainlink price: {answer}")
+            raise ValueError(f"Invalid Chainlink price for {label}: {answer}")
 
         # Validation 2: Check updatedAt is not zero (data exists)
         if updated_at == 0:
             raise ValueError(
-                f"Chainlink price feed not updated: updatedAt=0 for round {round_id}"
+                f"Chainlink {label} feed not updated: updatedAt=0 for round {round_id}"
             )
 
         # Validation 3: Check round is complete (answeredInRound >= roundId)
         if answered_in_round < round_id:
             raise ValueError(
-                f"Chainlink round incomplete: answeredInRound={answered_in_round} < "
+                f"Chainlink {label} round incomplete: answeredInRound={answered_in_round} < "
                 f"roundId={round_id}"
             )
 
@@ -196,14 +202,15 @@ class ChainlinkAdapter(BasePriceAdapter):
         price_age = block_timestamp - updated_at
         if price_age > self.staleness_threshold:
             raise ValueError(
-                f"Chainlink price stale: age={price_age}s exceeds "
+                f"Chainlink {label} price stale: age={price_age}s exceeds "
                 f"threshold={self.staleness_threshold}s (updatedAt={updated_at}, "
                 f"blockTimestamp={block_timestamp})"
             )
 
         logger.debug(
-            "Chainlink ETH/USD: price=%d, decimals=%d, updated_at=%d, "
+            "Chainlink %s: price=%d, decimals=%d, updated_at=%d, "
             "answered_in_round=%d, round_id=%d, price_age=%ds",
+            label,
             answer,
             decimals,
             updated_at,
@@ -214,38 +221,54 @@ class ChainlinkAdapter(BasePriceAdapter):
 
         return answer, decimals
 
-    def _convert_eth_usd_to_usd_eth(
+    async def _get_eth_usd_price(self) -> tuple[int, int]:
+        """Get ETH/USD price from Chainlink oracle."""
+        return await self._get_feed_price(self.eth_usd_feed, "ETH/USD")
+
+    async def _get_base_usd_price(self) -> tuple[int, int]:
+        """Get BASE/USD price from Chainlink oracle.
+
+        Raises:
+            ValueError: If no base_usd_feed is configured
+        """
+        if not self.base_usd_feed:
+            raise ValueError("No chainlink_base_usd_feed configured for non-ETH base asset")
+        return await self._get_feed_price(self.base_usd_feed, "BASE/USD")
+
+    def _invert_usd_feed(
         self,
-        eth_usd_price: int,
+        asset_usd_price: int,
         feed_decimals: int,
     ) -> int:
-        """Convert ETH/USD price to USD/ETH price (inverted).
+        """Invert an X/USD price to get USD/X price.
+
+        Works for any asset: ETH/USD → USD/ETH, XAUT/USD → USD/XAUT, etc.
 
         Args:
-            eth_usd_price: Price of 1 ETH in USD (e.g., 3000 * 10^8)
+            asset_usd_price: Price of 1 asset in USD (e.g., 3000 * 10^8)
             feed_decimals: Decimals of the feed (typically 8)
 
         Returns:
-            Price of 1 USD in ETH (18 decimals)
+            Price of 1 USD in the asset (18 decimals)
 
         Example:
             ETH/USD = 3000 (with 8 decimals: 300000000000)
-            USD/ETH = 10^18 / (3000 * 10^8) = 10^18 / 300000000000
-                    = 3333333333 (in 18 decimals, represents 0.000333... ETH)
+            USD/ETH = 10^18 * 10^8 / 300000000000
+                    = 3333333333 (in D18, represents 0.000333... ETH)
         """
-        # Formula: usd_in_eth = 10^18 / (eth_usd_price / 10^feed_decimals)
-        #                     = (10^18 * 10^feed_decimals) / eth_usd_price
+        # Formula: usd_in_asset = 10^18 / (asset_usd_price / 10^feed_decimals)
+        #                       = (10^18 * 10^feed_decimals) / asset_usd_price
         numerator = 10**18 * (10**feed_decimals)
-        usd_in_eth = numerator // eth_usd_price
+        usd_in_asset = numerator // asset_usd_price
 
         logger.debug(
-            "Converted ETH/USD %d (decimals=%d) to USD/ETH %d (18 decimals)",
-            eth_usd_price,
+            "Inverted feed: %d (decimals=%d) -> USD/asset %d (D18)",
+            asset_usd_price,
             feed_decimals,
-            usd_in_eth,
+            usd_in_asset,
         )
 
-        return usd_in_eth
+        return usd_in_asset
 
     async def fetch_prices(
         self,
@@ -257,6 +280,10 @@ class ChainlinkAdapter(BasePriceAdapter):
         This adapter only prices assets in the configured stablecoins list.
         All other assets are skipped and will be priced by other adapters.
 
+        Supports two modes:
+        - ETH base: Uses ETH/USD feed, inverts to USD/ETH for stablecoins
+        - Non-ETH base: Uses BASE/USD feed, inverts to USD/BASE for stablecoins
+
         Args:
             asset_addresses: List of asset addresses to potentially price
             prices_accumulator: Existing price accumulator to update
@@ -267,33 +294,48 @@ class ChainlinkAdapter(BasePriceAdapter):
         Notes:
             - Only processes assets in chainlink_stablecoins configuration
             - Assumes all configured stablecoins are worth ~$1
-            - Uses Chainlink ETH/USD oracle for conversion
-            - Prices are in 18-decimal wei per 1 unit of asset
+            - Prices are in D18 per 1 unit of asset
         """
         if self._skip:
             return prices_accumulator
 
-        if prices_accumulator.base_asset != self.eth_address:
-            raise ValueError("Chainlink adapter only supports ETH as base asset")
+        is_eth_base = self.eth_address and (
+            prices_accumulator.base_asset == self.eth_address
+        )
 
-        # Get ETH/USD price from Chainlink
-        try:
-            eth_usd_price, feed_decimals = await self._get_eth_usd_price()
-        except Exception as e:
-            logger.error("Failed to fetch Chainlink ETH/USD price: %s", e)
+        # Determine USD/BASE price
+        if is_eth_base:
+            # ETH is base: use ETH/USD feed directly
+            try:
+                eth_usd_price, feed_decimals = await self._get_eth_usd_price()
+            except Exception as e:
+                logger.error("Failed to fetch Chainlink ETH/USD price: %s", e)
+                return prices_accumulator
+            usd_in_base = self._invert_usd_feed(eth_usd_price, feed_decimals)
+            feed_label = f"ETH/USD: {eth_usd_price}"
+        elif self.base_usd_feed:
+            # Non-ETH base: use BASE/USD feed for two-hop
+            try:
+                base_usd_price, feed_decimals = await self._get_base_usd_price()
+            except Exception as e:
+                logger.error("Failed to fetch Chainlink BASE/USD price: %s", e)
+                return prices_accumulator
+            usd_in_base = self._invert_usd_feed(base_usd_price, feed_decimals)
+            feed_label = f"BASE/USD: {base_usd_price}"
+        else:
+            logger.warning(
+                "Non-ETH base asset detected but no chainlink_base_usd_feed configured. "
+                "Skipping Chainlink stablecoin pricing."
+            )
             return prices_accumulator
-
-        # Convert to USD/ETH (inverted)
-        usd_in_eth = self._convert_eth_usd_to_usd_eth(eth_usd_price, feed_decimals)
 
         # Apply to all configured stablecoins that are in the asset list
         priced_count = 0
         for asset_address in asset_addresses:
             if asset_address.lower() in self.stablecoins:
                 # For stablecoins, we assume 1 token ≈ 1 USD
-                # usd_in_eth represents: "ETH per 1 whole USD" in 18 decimals
-                # Store this directly without normalization to match Pyth's format
-                prices_accumulator.prices[asset_address] = usd_in_eth
+                # usd_in_base represents: "base asset per 1 whole USD" in D18
+                prices_accumulator.prices[asset_address] = usd_in_base
 
                 # Fetch and store token decimals
                 token_decimals = await self.get_token_decimals(asset_address)
@@ -302,16 +344,16 @@ class ChainlinkAdapter(BasePriceAdapter):
                 priced_count += 1
 
                 logger.info(
-                    "Chainlink priced %s: %d wei (decimals=%d)",
+                    "Chainlink priced %s: %d D18 (decimals=%d)",
                     asset_address,
-                    usd_in_eth,
+                    usd_in_base,
                     token_decimals,
                 )
 
         logger.info(
-            "Chainlink adapter priced %d stablecoins (ETH/USD: %d)",
+            "Chainlink adapter priced %d stablecoins (%s)",
             priced_count,
-            eth_usd_price,
+            feed_label,
         )
 
         self.validate_prices(prices_accumulator)

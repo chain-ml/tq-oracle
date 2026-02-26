@@ -2,6 +2,7 @@
 
 import pytest
 import time
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tq_oracle.adapters.asset_adapters.hypercore import (
@@ -275,7 +276,7 @@ async def test_fetch_assets_handles_zero_nav(config):
 
 @pytest.mark.asyncio
 async def test_parse_history_point_valid():
-    """Should parse valid history points."""
+    """Should parse valid history points as Decimal."""
     config = OracleSettings(
         vault_address="0x277C6A642564A91ff78b008022D65683cEE5CCC5",
         oracle_helper_address="0xOracleHelper",
@@ -287,7 +288,7 @@ async def test_parse_history_point_valid():
 
     result = adapter._parse_history_point(1234567890000, "1000.50")
 
-    assert result == (1234567890000, 1000.50)
+    assert result == (1234567890000, Decimal("1000.50"))
 
 
 @pytest.mark.asyncio
@@ -309,6 +310,91 @@ async def test_parse_history_point_invalid():
     # Negative value
     result = adapter._parse_history_point(1234567890000, "-100")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_vault_nav_rejects_stale(config_with_chain):
+    """Should reject stale vault data when lastUpdateTime is present."""
+    adapter = HyperCoreAdapter(config_with_chain)
+
+    stale_time_ms = int(time.time() * 1000) - (5 * 60 * 1000)  # 5 minutes ago
+    mock_response = {
+        "portfolio": {"equity": "500000.0"},
+        "lastUpdateTime": stale_time_ms,
+    }
+
+    with patch("aiohttp.ClientSession") as mock_session_class:
+        mock_session = MagicMock()
+        mock_response_obj = MagicMock()
+        mock_response_obj.status = 200
+        mock_response_obj.json = AsyncMock(return_value=mock_response)
+        mock_response_obj.__aenter__ = AsyncMock(return_value=mock_response_obj)
+        mock_response_obj.__aexit__ = AsyncMock(return_value=None)
+        mock_session.post = MagicMock(return_value=mock_response_obj)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session
+
+        with pytest.raises(ValueError, match="stale"):
+            await adapter._fetch_vault_nav("0xVaultAddress")
+
+
+@pytest.mark.asyncio
+async def test_fetch_vault_nav_accepts_fresh(config_with_chain):
+    """Should accept fresh vault data when lastUpdateTime is recent."""
+    adapter = HyperCoreAdapter(config_with_chain)
+
+    fresh_time_ms = int(time.time() * 1000) - 5000  # 5 seconds ago
+    mock_response = {
+        "portfolio": {"equity": "500000.0"},
+        "lastUpdateTime": fresh_time_ms,
+    }
+
+    with patch("aiohttp.ClientSession") as mock_session_class:
+        mock_session = MagicMock()
+        mock_response_obj = MagicMock()
+        mock_response_obj.status = 200
+        mock_response_obj.json = AsyncMock(return_value=mock_response)
+        mock_response_obj.__aenter__ = AsyncMock(return_value=mock_response_obj)
+        mock_response_obj.__aexit__ = AsyncMock(return_value=None)
+        mock_session.post = MagicMock(return_value=mock_response_obj)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session
+
+        nav = await adapter._fetch_vault_nav("0xVaultAddress")
+
+    expected = 500_000 * (10**USDC_DECIMALS) * DECIMAL_MULTIPLIER
+    assert nav == expected
+
+
+def test_decimal_precision_large_nav(config):
+    """Decimal conversion should be exact for large NAV values.
+
+    Float would lose precision for values like $1,234,567,890.123456
+    (16 significant digits exceeds float64's ~15.9 digit precision).
+    """
+    adapter = HyperCoreAdapter(config)
+
+    current_time_ms = int(time.time() * 1000)
+    # $1,234,567,890.123456 — 16 significant digits
+    large_value = "1234567890.123456"
+
+    data = [
+        ("day", {
+            "accountValueHistory": [
+                [current_time_ms - 1000, large_value],
+            ]
+        })
+    ]
+
+    nav = adapter._parse_portfolio_response(data, "0xTest")
+
+    # With Decimal: int(Decimal("1234567890.123456") * 10^6) = 1234567890123456 (exact)
+    # With float:   int(1234567890.123456 * 10^6)   could be 1234567890123455 or ...457
+    expected_usdc_6 = int(Decimal(large_value) * Decimal(10**USDC_DECIMALS))
+    expected_wei = expected_usdc_6 * DECIMAL_MULTIPLIER
+    assert nav == expected_wei
 
 
 @pytest.mark.asyncio

@@ -348,10 +348,19 @@ class MorphoBlueAdapter(BaseAssetAdapter):
                 market_state.total_borrow_shares,
             )
 
-        # Calculate accrued interest (linear)
-        # interest = totalBorrowAssets * borrowRate * elapsed / WAD
+        # Calculate accrued interest using 3-term Taylor expansion
+        # Matches Morpho Blue's MathLib.wTaylorCompounded(rate, elapsed):
+        #   firstTerm  = rate * elapsed
+        #   secondTerm = firstTerm^2 / (2 * WAD)
+        #   thirdTerm  = secondTerm * firstTerm / (3 * WAD)
+        #   interest   = totalBorrowAssets * (firstTerm + secondTerm + thirdTerm) / WAD
+        first_term = borrow_rate * elapsed
+        second_term = (first_term * first_term) // (2 * WAD)
+        third_term = (second_term * first_term) // (3 * WAD)
+        compound_factor = first_term + second_term + third_term
+
         interest = (
-            market_state.total_borrow_assets * borrow_rate * elapsed
+            market_state.total_borrow_assets * compound_factor
         ) // WAD
 
         # New borrow total

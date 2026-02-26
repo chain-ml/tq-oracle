@@ -28,6 +28,7 @@ async def build_report(ctx: PipelineContext) -> None:
         aggregated,
         final_prices,
         asset_decimals=ctx.price_data_required.decimals,
+        base_asset_decimals=state.settings.base_asset_decimals,
     )
 
     ctx.report = report
@@ -46,11 +47,11 @@ async def publish_report(ctx: PipelineContext) -> None:
     log = ctx.state.logger
 
     # Log final report summary
-    tvl_eth = report.tvl_in_base_asset / 10**18
+    tvl_display = report.tvl_in_base_asset / 10**report.base_asset_decimals
 
     log.info("=" * 60)
     log.info("Final Report Summary:")
-    log.info(f"  TVL (Total Value Locked): {tvl_eth:,.6f} ETH")
+    log.info(f"  TVL (Total Value Locked): {tvl_display:,.6f} (base asset)")
     log.info(f"  Assets Reported: {len(report.final_prices)}")
     log.info("=" * 60)
 

@@ -50,7 +50,7 @@ async def price_assets(ctx: PipelineContext) -> None:
     log.info("Calculating total assets in base asset...")
     log.debug(f"Assets found: {aggregated}")
     log.debug(f"Price data: {price_data}")
-    total_assets = calculate_total_assets(aggregated, price_data)
+    total_assets = calculate_total_assets(aggregated, price_data, s.base_asset_decimals)
     log.debug("Total assets in base asset: %d", total_assets)
 
     log.info("Deriving final prices via OracleHelper...")
@@ -75,7 +75,8 @@ async def price_assets(ctx: PipelineContext) -> None:
         for subvault_addr in subvault_addresses:
             assets_for_subvault = ctx.subvault_asset_map.get(subvault_addr.lower(), [])
             await log_subvault_breakdown(
-                subvault_addr, assets_for_subvault, price_data, s
+                subvault_addr, assets_for_subvault, price_data, s,
+                base_asset_decimals=s.base_asset_decimals,
             )
 
         # Log extra addresses breakdown
@@ -83,5 +84,6 @@ async def price_assets(ctx: PipelineContext) -> None:
             log.info("Extra addresses asset breakdown:")
             for extra_addr, assets_for_extra in ctx.extra_addresses_assets.items():
                 await log_subvault_breakdown(
-                    f"Extra Address: {extra_addr}", assets_for_extra, price_data, s
+                    f"Extra Address: {extra_addr}", assets_for_extra, price_data, s,
+                    base_asset_decimals=s.base_asset_decimals,
                 )

@@ -239,7 +239,7 @@ class BridgeConfig(BaseModel):
     type: Literal["cctp", "native", "evm_core"]
     source_chain: str  # Chain name (must match ChainConfig.name)
     dest_chain: str  # Chain name (must match ChainConfig.name)
-    lookback_blocks: int = 80  # Blocks to scan for in-flight detection
+    lookback_blocks: int = 300  # Blocks to scan for in-flight detection (~60min on L1)
     token_messenger: str | None = None  # CCTP TokenMessenger address override
     source_subvault: str | None = None  # Subvault address on source chain
     dest_subvault: str | None = None  # Subvault address on dest chain
@@ -368,9 +368,13 @@ class OracleSettings(BaseSettings):
     pyth_max_confidence_ratio: float = 0.03
     pyth_dynamic_discovery_enabled: bool = True
 
+    # Base asset configuration
+    base_asset_decimals: int = 18  # Decimals of the vault's base asset (default: ETH/18)
+
     # Chainlink-specific settings
     chainlink_enabled: bool = False
     chainlink_eth_usd_feed: str | None = None
+    chainlink_base_usd_feed: str | None = None  # Optional: for non-ETH base asset two-hop pricing
     chainlink_stablecoins: list[str] = Field(
         default_factory=list
     )  # Stablecoins to price via Chainlink

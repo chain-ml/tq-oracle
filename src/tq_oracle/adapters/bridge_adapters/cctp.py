@@ -25,8 +25,6 @@ from tq_oracle.abi import load_abi
 from tq_oracle.constants import (
     ARBITRUM_BLOCK_TIME,
     BASE_BLOCK_TIME,
-    CCTP_LOOKBACK_BLOCKS,
-    CCTP_RATE_LIMITED_LOOKBACK_BLOCKS,
     HYPEREVM_BLOCK_TIME,
     L1_BLOCK_TIME,
     RPC_RATE_LIMIT_DELAY,
@@ -73,6 +71,9 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
     The adapter queries DepositForBurn events on the source chain and
     MintAndWithdraw events on the destination chain, then matches them
     by (amount, recipient) to find in-flight transfers.
+
+    Checks both directions (source->dest and dest->source) to catch
+    transfers in either direction.
     """
 
     def __init__(self, config: OracleSettings, bridge_config: BridgeConfig):
@@ -154,6 +155,20 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
 
         return None
 
+    def _get_chain_block_number(self, chain_name: str) -> int | None:
+        """Get configured block number for a chain from ChainConfig.
+
+        Args:
+            chain_name: Chain name
+
+        Returns:
+            Block number if configured, None otherwise
+        """
+        for chain in self.config.chains:
+            if chain.name.lower() == chain_name.lower():
+                return chain.block_number
+        return None
+
     def _get_token_messenger(self) -> str:
         """Get CCTP TokenMessenger address.
 
@@ -230,7 +245,8 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
     async def get_inflight_transfers(self) -> BridgeReconciliationResult:
         """Get all in-flight CCTP transfers.
 
-        Checks both directions if subvaults are configured on both chains.
+        Checks both directions (source->dest and dest->source) to detect
+        any in-flight transfers regardless of which chain initiated them.
 
         Returns:
             BridgeReconciliationResult with in-flight transfer details
@@ -284,8 +300,17 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
             source_block_time = CHAIN_BLOCK_TIMES.get(source_chain.lower(), L1_BLOCK_TIME)
             dest_block_time = CHAIN_BLOCK_TIMES.get(dest_chain.lower(), L1_BLOCK_TIME)
 
+            # Resolve to_block for each chain: use config block if pinned, else current
+            source_to_block = self._get_chain_block_number(source_chain)
+            dest_to_block = self._get_chain_block_number(dest_chain)
+
+            if source_to_block is None:
+                source_to_block = await source_w3.eth.block_number
+            if dest_to_block is None:
+                dest_to_block = await dest_w3.eth.block_number
+
             # Check source -> dest direction
-            inflight_transfers = await self._check_direction(
+            forward_transfers = await self._check_direction(
                 source_w3=source_w3,
                 dest_w3=dest_w3,
                 source_messenger=source_messenger,
@@ -296,17 +321,36 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
                 dest_chain=dest_chain,
                 source_block_time=source_block_time,
                 dest_block_time=dest_block_time,
+                source_to_block=source_to_block,
+                dest_to_block=dest_to_block,
             )
 
-            total_amount = sum(t.amount for t in inflight_transfers)
+            # Check dest -> source direction (reverse)
+            reverse_transfers = await self._check_direction(
+                source_w3=dest_w3,
+                dest_w3=source_w3,
+                source_messenger=dest_messenger,
+                dest_messenger=source_messenger,
+                source_subvault=dest_w3.to_checksum_address(dest_subvault),
+                dest_subvault=source_w3.to_checksum_address(source_subvault),
+                source_chain=dest_chain,
+                dest_chain=source_chain,
+                source_block_time=dest_block_time,
+                dest_block_time=source_block_time,
+                source_to_block=dest_to_block,
+                dest_to_block=source_to_block,
+            )
+
+            all_transfers = forward_transfers + reverse_transfers
+            total_amount = sum(t.amount for t in all_transfers)
 
             return BridgeReconciliationResult(
                 bridge_type=self.bridge_type,
                 source_chain=source_chain,
                 dest_chain=dest_chain,
                 total_inflight_amount=total_amount,
-                inflight_count=len(inflight_transfers),
-                inflight_transfers=inflight_transfers,
+                inflight_count=len(all_transfers),
+                inflight_transfers=all_transfers,
             )
 
         except Exception as e:
@@ -336,8 +380,13 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
         dest_chain: str,
         source_block_time: int,
         dest_block_time: int,
+        source_to_block: int,
+        dest_to_block: int,
     ) -> list[InFlightTransfer]:
         """Check for in-flight transactions in one direction.
+
+        Uses counter-based matching to correctly handle duplicate
+        (amount, recipient) pairs across multiple transfers.
 
         Args:
             source_w3: Web3 instance for source chain
@@ -350,46 +399,37 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
             dest_chain: Destination chain name
             source_block_time: Block time of source chain in seconds
             dest_block_time: Block time of destination chain in seconds
+            source_to_block: Upper bound block for source chain event queries
+            dest_to_block: Upper bound block for dest chain event queries
 
         Returns:
             List of in-flight transfers detected
         """
         direction = f"{source_chain}->{dest_chain}"
 
-        # Get current block numbers
-        source_current_block, dest_current_block = await asyncio.gather(
-            source_w3.eth.block_number,
-            dest_w3.eth.block_number,
-        )
-
-        # Calculate scaled lookback blocks
-        base_lookback = (
-            CCTP_RATE_LIMITED_LOOKBACK_BLOCKS
-            if self.config.using_default_rpc
-            else CCTP_LOOKBACK_BLOCKS
-        )
-
+        # Calculate scaled lookback blocks using bridge config
         source_lookback, dest_lookback = self._calculate_scaled_blocks(
-            base_lookback, source_block_time, dest_block_time
+            self.bridge_config.lookback_blocks, source_block_time, dest_block_time
         )
 
-        source_from_block = max(0, source_current_block - source_lookback + 1)
-        dest_from_block = max(0, dest_current_block - dest_lookback + 1)
+        source_from_block = max(0, source_to_block - source_lookback + 1)
+        dest_from_block = max(0, dest_to_block - dest_lookback + 1)
 
         logger.debug(
-            f"CCTP {direction}: Source lookback={source_lookback} blocks "
-            f"({source_lookback * source_block_time}s), "
-            f"Dest lookback={dest_lookback} blocks ({dest_lookback * dest_block_time}s)"
+            f"CCTP {direction}: Source blocks [{source_from_block}..{source_to_block}] "
+            f"({source_lookback} blocks, {source_lookback * source_block_time}s), "
+            f"Dest blocks [{dest_from_block}..{dest_to_block}] "
+            f"({dest_lookback} blocks, {dest_lookback * dest_block_time}s)"
         )
 
         # Query DepositForBurn events on source chain
         logger.debug(
             f"CCTP {direction}: Querying DepositForBurn from block {source_from_block} "
-            f"to {source_current_block} with depositor={source_subvault}"
+            f"to {source_to_block} with depositor={source_subvault}"
         )
         deposit_events = await source_messenger.events.DepositForBurn.get_logs(
             from_block=source_from_block,
-            to_block=source_current_block,
+            to_block=source_to_block,
             argument_filters={"depositor": source_subvault},
         )
 
@@ -399,11 +439,11 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
         # Query MintAndWithdraw events on destination chain
         logger.debug(
             f"CCTP {direction}: Querying MintAndWithdraw from block {dest_from_block} "
-            f"to {dest_current_block} with mintRecipient={dest_subvault}"
+            f"to {dest_to_block} with mintRecipient={dest_subvault}"
         )
         mint_events = await dest_messenger.events.MintAndWithdraw.get_logs(
             from_block=dest_from_block,
-            to_block=dest_current_block,
+            to_block=dest_to_block,
             argument_filters={"mintRecipient": dest_subvault},
         )
 
@@ -411,8 +451,8 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
             f"CCTP {direction}: Found {len(deposit_events)} deposits, {len(mint_events)} mints"
         )
 
-        # Build sets of transaction identities
-        deposited_txs: dict[TransactionIdentity, dict] = {}
+        # Collect all deposits preserving order and metadata
+        deposits: list[tuple[TransactionIdentity, dict]] = []
         for event in deposit_events:
             identity = TransactionIdentity(
                 amount=event["args"]["amount"],
@@ -420,36 +460,40 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
                     source_w3, event["args"]["mintRecipient"]
                 ),
             )
-            deposited_txs[identity] = {
+            deposits.append((identity, {
                 "tx_hash": event.get("transactionHash", b"").hex() if event.get("transactionHash") else None,
                 "token": event["args"].get("burnToken", ""),
-            }
+            }))
 
-        minted_txs: set[TransactionIdentity] = set()
+        # Count mints by identity (handles duplicates correctly)
+        mint_counts: dict[TransactionIdentity, int] = {}
         for event in mint_events:
-            # Mint amount includes fee, so add feeCollected to match deposit amount
+            # Reconstruct deposit amount: mint amount + fee = original deposit
             identity = TransactionIdentity(
                 amount=event["args"]["amount"] + event["args"].get("feeCollected", 0),
                 recipient=event["args"]["mintRecipient"].lower(),
             )
-            minted_txs.add(identity)
+            mint_counts[identity] = mint_counts.get(identity, 0) + 1
 
-        # Find in-flight transactions (deposited but not minted)
-        inflight_identities = set(deposited_txs.keys()) - minted_txs
-
+        # Match deposits against mints greedily
+        # For each deposit, consume a mint if available; otherwise it's in-flight
+        remaining_mints: dict[TransactionIdentity, int] = dict(mint_counts)
         inflight_transfers: list[InFlightTransfer] = []
-        for identity in inflight_identities:
-            deposit_info = deposited_txs[identity]
-            inflight_transfers.append(
-                InFlightTransfer(
-                    amount=identity.amount,
-                    token_address=str(deposit_info.get("token", "")),
-                    source_chain=source_chain,
-                    dest_chain=dest_chain,
-                    recipient=identity.recipient,
-                    tx_hash=deposit_info.get("tx_hash"),
+
+        for identity, deposit_info in deposits:
+            if remaining_mints.get(identity, 0) > 0:
+                remaining_mints[identity] -= 1
+            else:
+                inflight_transfers.append(
+                    InFlightTransfer(
+                        amount=identity.amount,
+                        token_address=str(deposit_info.get("token", "")),
+                        source_chain=source_chain,
+                        dest_chain=dest_chain,
+                        recipient=identity.recipient,
+                        tx_hash=deposit_info.get("tx_hash"),
+                    )
                 )
-            )
 
         if inflight_transfers:
             logger.warning(

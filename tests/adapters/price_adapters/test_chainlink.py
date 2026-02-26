@@ -139,7 +139,7 @@ class TestEthUsdConversion:
         eth_usd_price = 3000 * 10**8
         feed_decimals = 8
 
-        usd_in_eth = adapter._convert_eth_usd_to_usd_eth(eth_usd_price, feed_decimals)
+        usd_in_eth = adapter._invert_usd_feed(eth_usd_price, feed_decimals)
 
         # Expected: (10^18 * 10^8) / (3000 * 10^8) = 10^18 / 3000 = 333333333333333
         expected = (10**18 * 10**8) // eth_usd_price
@@ -153,7 +153,7 @@ class TestEthUsdConversion:
         eth_usd_price = 10000 * 10**8
         feed_decimals = 8
 
-        usd_in_eth = adapter._convert_eth_usd_to_usd_eth(eth_usd_price, feed_decimals)
+        usd_in_eth = adapter._invert_usd_feed(eth_usd_price, feed_decimals)
 
         # Expected: 10^18 / 10000 = 10^14 = 100000000000000
         expected = (10**18 * 10**8) // eth_usd_price
@@ -166,7 +166,7 @@ class TestEthUsdConversion:
         eth_usd_price = 100 * 10**8
         feed_decimals = 8
 
-        usd_in_eth = adapter._convert_eth_usd_to_usd_eth(eth_usd_price, feed_decimals)
+        usd_in_eth = adapter._invert_usd_feed(eth_usd_price, feed_decimals)
 
         # Expected: 10^18 / 100 = 10^16 = 10000000000000000
         expected = (10**18 * 10**8) // eth_usd_price
@@ -180,7 +180,7 @@ class TestEthUsdConversion:
         eth_usd_price = 256789000000
         feed_decimals = 8
 
-        usd_in_eth = adapter._convert_eth_usd_to_usd_eth(eth_usd_price, feed_decimals)
+        usd_in_eth = adapter._invert_usd_feed(eth_usd_price, feed_decimals)
 
         expected = (10**18 * 10**8) // eth_usd_price
         assert usd_in_eth == expected
@@ -192,7 +192,7 @@ class TestEthUsdConversion:
         eth_usd_price = 3000 * 10**18
         feed_decimals = 18
 
-        usd_in_eth = adapter._convert_eth_usd_to_usd_eth(eth_usd_price, feed_decimals)
+        usd_in_eth = adapter._invert_usd_feed(eth_usd_price, feed_decimals)
 
         expected = (10**18 * 10**18) // eth_usd_price
         assert usd_in_eth == expected
@@ -204,7 +204,7 @@ class TestEthUsdConversion:
         eth_usd_price = 2999 * 10**8 + 99999999  # ~$2999.99999999
         feed_decimals = 8
 
-        usd_in_eth = adapter._convert_eth_usd_to_usd_eth(eth_usd_price, feed_decimals)
+        usd_in_eth = adapter._invert_usd_feed(eth_usd_price, feed_decimals)
 
         # Result should be truncated (integer division)
         assert isinstance(usd_in_eth, int)
@@ -226,16 +226,17 @@ class TestFetchPrices:
         assert result.prices == {"0x111": 100}
 
     @pytest.mark.asyncio
-    async def test_raises_on_wrong_base_asset(self, config):
-        """Should raise ValueError if base_asset is not ETH."""
+    async def test_skips_non_eth_base_without_feed(self, config):
+        """Should skip pricing when base_asset is not ETH and no base_usd_feed configured."""
         adapter = ChainlinkAdapter(config)
         wrong_base = "0xWrongBase"
 
-        with pytest.raises(ValueError, match="only supports ETH as base asset"):
-            await adapter.fetch_prices(
-                ["0xUSDC"],
-                PriceData(base_asset=wrong_base, prices={}),
-            )
+        result = await adapter.fetch_prices(
+            ["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"],
+            PriceData(base_asset=wrong_base, prices={}),
+        )
+        # Should return unchanged accumulator (no prices added)
+        assert len(result.prices) == 0
 
     @pytest.mark.asyncio
     async def test_prices_stablecoins(self, mocker, config, eth_address, usdc_address):
@@ -424,7 +425,7 @@ class TestGetEthUsdPrice:
             adapter.w3.eth, "get_block", return_value={"timestamp": 1234567890}
         )
 
-        with pytest.raises(ValueError, match="price feed not updated.*updatedAt=0"):
+        with pytest.raises(ValueError, match="feed not updated.*updatedAt=0"):
             await adapter._get_eth_usd_price()
 
     @pytest.mark.asyncio

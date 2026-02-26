@@ -220,8 +220,8 @@ class TestInterestAccrual:
         # Borrow shares should not change (only assets accrue)
         assert new_borrow_shares == sample_market_state.total_borrow_shares
 
-    def test_accrual_is_linear(self, config, sample_market_state):
-        """Interest should accrue linearly with time."""
+    def test_accrual_is_taylor_compounded(self, config, sample_market_state):
+        """Interest uses 3-term Taylor expansion, so 2h > 2x 1h (compounding)."""
         adapter = MorphoBlueAdapter(config)
 
         borrow_rate = int(0.05 * 10**18 // (365 * 24 * 3600))
@@ -243,8 +243,10 @@ class TestInterestAccrual:
         interest_1h = result_1h[2] - sample_market_state.total_borrow_assets
         interest_2h = result_2h[2] - sample_market_state.total_borrow_assets
 
-        # 2 hour interest should be ~2x 1 hour interest
-        assert abs(interest_2h - 2 * interest_1h) < 2  # Allow for rounding
+        # With compounding, 2h interest should be slightly MORE than 2x 1h
+        assert interest_2h > 2 * interest_1h
+        # But still very close (quadratic term is tiny at normal rates)
+        assert abs(interest_2h - 2 * interest_1h) < 100  # Allow for compounding effect
 
 
 class TestShareToAssetConversion:
