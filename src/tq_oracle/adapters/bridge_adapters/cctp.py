@@ -6,6 +6,8 @@ events on destination chain.
 
 Supports:
 - Mainnet <-> HyperEVM (CCTP V2)
+- Mainnet <-> Arbitrum (CCTP V2)
+- Mainnet <-> Base (CCTP V2)
 - Bidirectional tracking (both directions)
 """
 
@@ -21,6 +23,8 @@ from web3 import AsyncWeb3
 import tq_oracle
 from tq_oracle.abi import load_abi
 from tq_oracle.constants import (
+    ARBITRUM_BLOCK_TIME,
+    BASE_BLOCK_TIME,
     CCTP_LOOKBACK_BLOCKS,
     CCTP_RATE_LIMITED_LOOKBACK_BLOCKS,
     HYPEREVM_BLOCK_TIME,
@@ -55,6 +59,8 @@ CHAIN_BLOCK_TIMES: dict[str, int] = {
     "mainnet": L1_BLOCK_TIME,
     "hyperevm": HYPEREVM_BLOCK_TIME,
     "hypercore": HYPEREVM_BLOCK_TIME,  # Same as HyperEVM
+    "arbitrum": ARBITRUM_BLOCK_TIME,
+    "base": BASE_BLOCK_TIME,
 }
 
 
@@ -88,7 +94,7 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
         """Get RPC URL for a chain.
 
         Args:
-            chain_name: Chain name (mainnet, hyperevm)
+            chain_name: Chain name (mainnet, hyperevm, arbitrum, base)
 
         Returns:
             RPC URL for the chain
@@ -101,13 +107,19 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
 
         # Fallback to default RPCs
         from tq_oracle.constants import (
+            DEFAULT_BASE_RPC_URL,
             DEFAULT_MAINNET_RPC_URL,
             HYPEREVM_MAINNET_RPC,
         )
 
+        # Default Arbitrum RPC (not in constants yet)
+        DEFAULT_ARBITRUM_RPC_URL = "https://arb1.arbitrum.io/rpc"
+
         chain_rpc_map = {
             "mainnet": self.config.vault_rpc or DEFAULT_MAINNET_RPC_URL,
             "hyperevm": HYPEREVM_MAINNET_RPC,
+            "arbitrum": DEFAULT_ARBITRUM_RPC_URL,
+            "base": DEFAULT_BASE_RPC_URL,
         }
 
         if chain_name.lower() not in chain_rpc_map:

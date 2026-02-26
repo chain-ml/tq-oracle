@@ -27,6 +27,7 @@ async def build_report(ctx: PipelineContext) -> None:
         ctx.total_assets_required,
         aggregated,
         final_prices,
+        asset_decimals=ctx.price_data_required.decimals,
     )
 
     ctx.report = report

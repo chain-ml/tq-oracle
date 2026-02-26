@@ -56,10 +56,15 @@ def encode_submit_reports(
     else:
         filtered_prices = report.final_prices
 
+    # Apply decimal scaling: price * 10^(36 - 2*decimals)
+    # For 18-decimal tokens: no change (10^0 = 1)
+    # For 6-decimal tokens: multiply by 10^24
+    scaled_prices = _apply_decimal_scaling(filtered_prices, report.asset_decimals)
+
     reports_array: list[tuple[ChecksumAddress, int]] = [
         (w3.to_checksum_address(asset_addr), price_d18)
         for asset_addr, price_d18 in sorted(
-            filtered_prices.items(),
+            scaled_prices.items(),
             key=lambda x: 0 if w3.to_checksum_address(x[0]) == base_asset else 1,
         )
     ]
@@ -79,3 +84,44 @@ def encode_submit_reports(
     calldata = bytes.fromhex(calldata_hex.removeprefix("0x"))
 
     return (oracle_address, calldata)
+
+
+def _apply_decimal_scaling(
+    prices: dict[str, int],
+    asset_decimals: dict[str, int],
+) -> dict[str, int]:
+    """Apply decimal scaling to prices for submitReports.
+
+    The oracle contract expects prices scaled by 10^(36 - 2*decimals):
+    - 18-decimal tokens: 10^(36-36) = 10^0 = 1 (unchanged)
+    - 6-decimal tokens: 10^(36-12) = 10^24 (multiply by 10^24)
+
+    Args:
+        prices: Asset address -> price (D18) mapping
+        asset_decimals: Asset address -> token decimals mapping
+
+    Returns:
+        Prices with decimal scaling applied
+    """
+    scaled: dict[str, int] = {}
+
+    for asset_addr, price_d18 in prices.items():
+        decimals = asset_decimals.get(asset_addr.lower(), asset_decimals.get(asset_addr, 18))
+        scale_exponent = 36 - 2 * decimals
+
+        if scale_exponent == 0:
+            scaled[asset_addr] = price_d18
+        else:
+            scale_factor = 10**scale_exponent
+            scaled_price = price_d18 * scale_factor
+            logger.info(
+                "Decimal scaling %s: decimals=%d, scale=10^%d, price %d -> %d",
+                asset_addr,
+                decimals,
+                scale_exponent,
+                price_d18,
+                scaled_price,
+            )
+            scaled[asset_addr] = scaled_price
+
+    return scaled

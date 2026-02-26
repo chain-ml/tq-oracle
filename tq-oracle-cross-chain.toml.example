@@ -1,0 +1,124 @@
+# ============================================================
+# TQ Oracle - Cross-Chain Configuration (Mainnet + HyperEVM)
+# ============================================================
+
+vault_address = "0x277C6A642564A91ff78b008022D65683cEE5CCC5"
+vault_rpc = "https://ethereum-rpc.publicnode.com"
+safe_address = "0x3F1C3Eb0bC499c1A091B635dEE73fF55E19cdCE9"
+network = "mainnet"
+
+dry_run = true
+log_level = "DEBUG"
+additional_asset_support = true
+
+# --- Price feeds (unchanged) ---
+pyth_enabled = true
+chainlink_enabled = true
+chainlink_eth_usd_feed = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+chainlink_stablecoins = [
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  # USDC
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7",  # USDT
+]
+coingecko_enabled = true
+
+# ============================================================
+# Multi-Chain Configuration
+# ============================================================
+
+# Primary chain - mainnet (handles redemptions/deposits)
+[[chains]]
+name = "mainnet"
+network = "mainnet"
+vault_address = "0x277C6A642564A91ff78b008022D65683cEE5CCC5"
+rpc = "https://ethereum-rpc.publicnode.com"
+role = "primary"
+required = true
+
+# Satellite chain - HyperEVM (contributes to TVL)
+[[chains]]
+name = "hyperevm"
+network = "hyperevm"
+vault_address = "0xYOUR_HYPEREVM_VAULT_ADDRESS"
+rpc = "https://rpc.hyperliquid.xyz/evm"
+role = "satellite"
+required = true
+
+# Optional: HyperCore for perp position tracking
+# [[chains]]
+# name = "hypercore"
+# network = "hypercore"
+# api_url = "https://api.hyperliquid.xyz"
+# role = "satellite"
+# required = false  # API instability tolerated
+#
+# [[chains.vaults]]
+# vault_address = "0xYOUR_HL_VAULT"
+# name = "perp_strategy_1"
+#
+# [[chains.subaccounts]]
+# master_address = "0xYOUR_MASTER_EOA"
+
+# ============================================================
+# Bridge In-Flight Tracking
+# ============================================================
+
+# CCTP: Mainnet → HyperEVM
+[[bridges]]
+type = "cctp"
+source_chain = "mainnet"
+dest_chain = "hyperevm"
+lookback_blocks = 80  # ~16 min on L1
+source_subvault = "0xYOUR_MAINNET_SUBVAULT_THAT_BRIDGES"
+dest_subvault = "0xYOUR_HYPEREVM_VAULT_ADDRESS"
+
+# CCTP: HyperEVM → Mainnet
+[[bridges]]
+type = "cctp"
+source_chain = "hyperevm"
+dest_chain = "mainnet"
+lookback_blocks = 960  # ~16 min on HyperEVM (1s blocks)
+source_subvault = "0xYOUR_HYPEREVM_VAULT_ADDRESS"
+dest_subvault = "0xYOUR_MAINNET_SUBVAULT_THAT_BRIDGES"
+
+# Optional: HyperEVM ↔ HyperCore native bridge
+# [[bridges]]
+# type = "evm_core"
+# source_chain = "hyperevm"
+# dest_chain = "hypercore"
+# source_subvault = "0xYOUR_HYPEREVM_VAULT_ADDRESS"
+# dest_subvault = "0xYOUR_HYPERCORE_ADDRESS"
+
+# ============================================================
+# Adapter Configurations (same as before)
+# ============================================================
+
+[[adapters.aave_v3]]
+name = "aave"
+pool_address = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+base_asset_type = "eth"
+# ... supply_tokens, borrow_tokens as before
+
+[adapters.pendle]
+oracle_address = "0x9a9Fa8338dd5E5B2188006f1Cd2Ef26d921650C2"
+
+[adapters.uniswap_v4]
+position_manager = "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e"
+
+[adapters.idle_balances]
+extra_addresses = ["0x17aeAbfD3cB214A8757bF07D2E248d526c8C4809"]
+
+# ============================================================
+# Subvault Configurations (mainnet subvaults)
+# ============================================================
+
+[[subvault_adapters]]
+subvault_address = "0xF00eF6a1fb7CA3Bc620f51f2aBd91549DD486DaA"
+additional_adapters = ["aave_v3.aave"]
+
+[[subvault_adapters]]
+subvault_address = "0xf37D9264099Fc67448e56e60BC33095F2b2a95d3"
+additional_adapters = ["aave_v3.aave", "pendle", "erc4626", "susde_cooldown", "wsteth_withdrawal"]
+
+[[subvault_adapters]]
+subvault_address = "0x9A47b63143FfA375405ddcf0952Fd2C1570915d8"
+additional_adapters = ["uniswap_v3", "uniswap_v4"]

@@ -8,7 +8,7 @@ from .morpho_blue import MorphoBlueAdapter
 from .pendle import PendleAdapter
 from .streth import StrETHAdapter
 from .stakewise import StakeWiseAdapter
-from .rwa import ERC4626VaultAdapter, SNUSDAdapter
+from .rwa import ERC4626VaultAdapter, SNUSDAdapter, SUSDeCooldownAdapter, WstETHWithdrawalAdapter
 from .uniswap import UniswapV3Adapter, UniswapV4Adapter
 
 ADAPTER_REGISTRY: dict[str, type[BaseAssetAdapter]] = {
@@ -20,6 +20,8 @@ ADAPTER_REGISTRY: dict[str, type[BaseAssetAdapter]] = {
     "pendle": PendleAdapter,
     "erc4626": ERC4626VaultAdapter,
     "snusd": SNUSDAdapter,
+    "susde_cooldown": SUSDeCooldownAdapter,
+    "wsteth_withdrawal": WstETHWithdrawalAdapter,
     "uniswap_v3": UniswapV3Adapter,
     "uniswap_v4": UniswapV4Adapter,
     "hypercore": HyperCoreAdapter,
@@ -96,10 +98,12 @@ __all__ = [
     "MorphoBlueAdapter",
     "PendleAdapter",
     "SNUSDAdapter",
+    "SUSDeCooldownAdapter",
     "StrETHAdapter",
     "StakeWiseAdapter",
     "UniswapV3Adapter",
     "UniswapV4Adapter",
+    "WstETHWithdrawalAdapter",
     "get_adapter_class",
     "parse_adapter_name",
 ]

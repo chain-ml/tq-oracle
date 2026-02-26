@@ -224,6 +224,8 @@ CORE_WRITER_ADDRESS = "0x3333333333333333333333333333333333333333"
 # Block times in seconds
 HYPEREVM_BLOCK_TIME = 1  # HyperEVM/HyperCore block time
 HL_BLOCK_TIME = HYPEREVM_BLOCK_TIME  # Alias for backwards compatibility
+ARBITRUM_BLOCK_TIME = 1  # Arbitrum L2 (~0.25s actual, use 1 for safety)
+BASE_BLOCK_TIME = 2  # Base L2 block time
 
 # CCTP lookback configuration
 CCTP_LOOKBACK_BLOCKS = 80  # ~16 minutes on L1 (80 * 12s)

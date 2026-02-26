@@ -123,6 +123,10 @@ class WstETHWithdrawalAdapter(BaseAssetAdapter):
             abi=load_lido_withdrawal_queue_abi(),
         )
 
+    @property
+    def adapter_name(self) -> str:
+        return "wsteth_withdrawal"
+
     @backoff.on_exception(
         backoff.constant,
         (ProviderConnectionError, TimeoutError),
@@ -257,10 +261,34 @@ class WstETHWithdrawalAdapter(BaseAssetAdapter):
             total_requests=len([r for r in requests if not r.is_claimed]),
         )
 
+    async def fetch_assets(
+        self,
+        subvault_address: str,
+        previous_assets: list[AssetData] | None = None,
+    ) -> list[AssetData]:
+        """Fetch withdrawal queue positions for a subvault.
+
+        This adapter is standalone - it preserves previous_assets and
+        adds its own discovered assets.
+
+        Args:
+            subvault_address: Subvault address to query
+            previous_assets: Assets from previous adapters (preserved)
+
+        Returns:
+            Previous assets plus unclaimed stETH as ETH
+        """
+        my_assets = await self.fetch_assets_for_subvault(subvault_address)
+
+        # Preserve previous assets and add our own
+        result = list(previous_assets) if previous_assets else []
+        result.extend(my_assets)
+        return result
+
     async def fetch_assets_for_subvault(
         self, subvault_address: str
     ) -> list[AssetData]:
-        """Fetch withdrawal queue positions for a subvault.
+        """Fetch withdrawal queue positions for a subvault (internal).
 
         Args:
             subvault_address: Subvault address to query
