@@ -209,8 +209,8 @@ async def test_fetch_all_assets_combines_vaults_and_subaccounts(config_with_chai
     async def mock_fetch_portfolio_nav(address):
         return 50_000 * (10**USDC_DECIMALS) * DECIMAL_MULTIPLIER  # $50K in wei
 
-    adapter._fetch_vault_nav = mock_fetch_vault_nav
-    adapter._fetch_portfolio_nav = mock_fetch_portfolio_nav
+    adapter._fetch_vault_nav = mock_fetch_vault_nav  # type: ignore[assignment]
+    adapter._fetch_portfolio_nav = mock_fetch_portfolio_nav  # type: ignore[assignment]
 
     assets = await adapter.fetch_all_assets()
 

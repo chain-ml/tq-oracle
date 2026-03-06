@@ -338,9 +338,11 @@ class CoinGeckoAdapter(BasePriceAdapter):
         3. Convert: price_in_base = (token_usd / base_usd) * 10^18
         """
         # Gather all IDs including the base asset
+        assert self.base_asset_id is not None  # Guarded by caller check
+        base_asset_id: str = self.base_asset_id
         coingecko_ids = list(set(tokens_to_price.values()))
-        if self.base_asset_id not in coingecko_ids:
-            coingecko_ids.append(self.base_asset_id)
+        if base_asset_id not in coingecko_ids:
+            coingecko_ids.append(base_asset_id)
 
         try:
             cg_prices_usd = await self._fetch_prices_batch(coingecko_ids, vs_currency="usd")
@@ -349,7 +351,7 @@ class CoinGeckoAdapter(BasePriceAdapter):
             return prices_accumulator
 
         # Get base asset USD price
-        base_usd_price = cg_prices_usd.get(self.base_asset_id)
+        base_usd_price = cg_prices_usd.get(base_asset_id)
         if not base_usd_price or base_usd_price <= 0:
             logger.error(
                 "No CoinGecko USD price for base asset (id: %s), cannot do two-hop",

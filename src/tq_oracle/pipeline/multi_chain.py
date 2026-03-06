@@ -93,7 +93,7 @@ async def collect_chain_assets(
 
         # For HyperCore, use the specialized adapter
         if chain_config.network.lower() in ("hypercore", "hyper_core"):
-            adapter = HyperCoreAdapter(config, chain_config=chain_config)
+            adapter = HyperCoreAdapter(config)
             assets = await adapter.fetch_all_assets()
             total = sum(a.amount for a in assets)
 
@@ -229,7 +229,7 @@ async def collect_multi_chain_assets(
     for i, chain_result in enumerate(chain_results):
         chain_config = config.chains[i]
 
-        if isinstance(chain_result, Exception):
+        if isinstance(chain_result, BaseException):
             error_msg = f"Chain {chain_config.name} failed: {chain_result}"
             logger.error(error_msg)
             result.chain_results.append(
@@ -266,7 +266,7 @@ async def collect_multi_chain_assets(
         for i, bridge_result in enumerate(bridge_results):
             bridge_config = config.bridges[i]
 
-            if isinstance(bridge_result, Exception):
+            if isinstance(bridge_result, BaseException):
                 logger.error(
                     f"Bridge check failed for {bridge_config.type}: {bridge_result}"
                 )

@@ -145,7 +145,7 @@ class EVMCoreBridgeAdapter(BaseBridgeAdapter):
 
         # Build filter for Transfer events from subvault to system address
         # Transfer(address indexed from, address indexed to, uint256 value)
-        filter_params = {
+        filter_params: dict[str, object] = {
             "fromBlock": from_block,
             "toBlock": to_block,
             "address": w3.to_checksum_address(usdc_address),
@@ -158,7 +158,7 @@ class EVMCoreBridgeAdapter(BaseBridgeAdapter):
             ],
         }
 
-        logs = await w3.eth.get_logs(filter_params)
+        logs = await w3.eth.get_logs(filter_params)  # type: ignore[arg-type]
         return [dict(log) for log in logs]
 
     async def _get_core_to_evm_transfers(
