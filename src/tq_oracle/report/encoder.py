@@ -56,12 +56,17 @@ def encode_submit_reports(
     else:
         filtered_prices = report.final_prices
 
-    # Apply decimal scaling: price * 10^(36 - 2*decimals)
-    # For 18-decimal tokens: no change (10^0 = 1)
-    # For 6-decimal tokens: multiply by 10^24
-    scaled_prices = _apply_decimal_scaling(
-        filtered_prices, report.asset_decimals, default_decimals=report.base_asset_decimals
-    )
+    # Apply decimal scaling only when prices are CowSwap-normalized.
+    # CowSwap divides prices by 10^(18-decimals), which propagates through
+    # getPricesD18. The scaling (10^(36-2*decimals)) undoes that normalization.
+    # Non-ETH base vaults skip CowSwap and use CoinGecko/Chainlink which store
+    # full D18 prices — getPricesD18 output is already correct, no scaling needed.
+    if report.base_asset_decimals == 18:
+        scaled_prices = _apply_decimal_scaling(
+            filtered_prices, report.asset_decimals, default_decimals=report.base_asset_decimals
+        )
+    else:
+        scaled_prices = filtered_prices
 
     reports_array: list[tuple[ChecksumAddress, int]] = [
         (w3.to_checksum_address(asset_addr), price_d18)

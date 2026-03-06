@@ -143,9 +143,6 @@ class ManualPriceAdapter(BasePriceAdapter):
         if self._skip:
             return prices_accumulator
 
-        if prices_accumulator.base_asset != self.eth_address:
-            raise ValueError("Manual price adapter only supports ETH as base asset")
-
         # Apply manual prices
         priced_count = 0
         for asset_address in asset_addresses:

@@ -63,13 +63,13 @@ async def test_fetch_prices_returns_empty_prices_on_unsupported_asset(
 
 
 @pytest.mark.asyncio
-async def test_fetch_prices_raises_on_unsupported_base_asset(config):
+async def test_fetch_prices_skips_on_unsupported_base_asset(config):
     adapter = ETHAdapter(config)
     unsupported_address = "0xUnsupported"
-    with pytest.raises(ValueError, match="ETH adapter only supports ETH as base asset"):
-        await adapter.fetch_prices(
-            [unsupported_address], PriceData(base_asset=unsupported_address, prices={})
-        )
+    accumulator = PriceData(base_asset=unsupported_address, prices={"0x111": 1})
+    result = await adapter.fetch_prices([unsupported_address], accumulator)
+    assert result is accumulator
+    assert result.prices == {"0x111": 1}
 
 
 @pytest.mark.asyncio

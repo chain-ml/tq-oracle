@@ -120,9 +120,11 @@ async def log_subvault_breakdown(
             if price_key:
                 price = prices.prices[price_key]
                 # Price is in D18 (base asset per token with 18-decimal normalization)
-                # Normalize: amount_in_18_decimals * price / 10^18
+                # Compute value in D18, then convert to native base asset units
                 amount_normalized = total_amount * (10 ** (18 - decimals))
-                base_value = (amount_normalized * price) // (10**18)
+                base_value_d18 = (amount_normalized * price) // (10**18)
+                # Convert D18 to native base asset units (e.g., divide by 10^12 for 6-decimal base)
+                base_value = base_value_d18 // (10 ** (18 - base_asset_decimals))
                 total_base_value += base_value
             else:
                 # Asset has no price data

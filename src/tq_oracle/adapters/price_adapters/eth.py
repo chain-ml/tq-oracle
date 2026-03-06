@@ -85,7 +85,11 @@ class ETHAdapter(BasePriceAdapter):
             - The base asset price is set to 0 by encode_asset_prices() before sending to OracleHelper.
         """
         if prices_accumulator.base_asset != self.eth_address:
-            raise ValueError("ETH adapter only supports ETH as base asset")
+            logger.info(
+                "ETH adapter skipped: base asset is not ETH (base=%s)",
+                prices_accumulator.base_asset,
+            )
+            return prices_accumulator
 
         asset_addresses_lower = [addr.lower() for addr in asset_addresses]
 
