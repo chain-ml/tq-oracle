@@ -567,18 +567,10 @@ class MorphoBlueAdapter(BaseAssetAdapter):
                 )
                 continue
 
-            try:
-                market_results = await self._process_market_position(
-                    market_name, market_config, subvault_address
-                )
-                results.extend(market_results)
-            except Exception as e:
-                logger.error(
-                    "Morpho Blue market %s failed for %s: %s",
-                    market_name,
-                    subvault_address,
-                    e,
-                )
+            market_results = await self._process_market_position(
+                market_name, market_config, subvault_address
+            )
+            results.extend(market_results)
 
         logger.info(
             "Morpho Blue: fetched %d positions for subvault %s",

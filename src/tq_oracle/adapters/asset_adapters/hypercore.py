@@ -364,69 +364,48 @@ class HyperCoreAdapter(BaseAssetAdapter):
 
         # Fetch native vault NAVs
         for vault_config in self._chain_config.vaults:
-            try:
-                nav_wei = await self._fetch_vault_nav(vault_config.vault_address)
-                if nav_wei > 0:
-                    all_assets.append(
-                        AssetData(
-                            asset_address=self.usdc_address,
-                            amount=nav_wei,
-                        )
+            nav_wei = await self._fetch_vault_nav(vault_config.vault_address)
+            if nav_wei > 0:
+                all_assets.append(
+                    AssetData(
+                        asset_address=self.usdc_address,
+                        amount=nav_wei,
                     )
-                    name = vault_config.name or vault_config.vault_address[:10]
-                    logger.info(
-                        "HyperCore vault '%s': NAV=%.2f USDC",
-                        name,
-                        nav_wei / (10**TARGET_DECIMALS),
-                    )
-            except Exception as e:
-                logger.error(
-                    "Failed to fetch HyperCore vault %s: %s",
-                    vault_config.vault_address,
-                    e,
+                )
+                name = vault_config.name or vault_config.vault_address[:10]
+                logger.info(
+                    "HyperCore vault '%s': NAV=%.2f USDC",
+                    name,
+                    nav_wei / (10**TARGET_DECIMALS),
                 )
 
         # Fetch sub-account NAVs
         for subaccount_config in self._chain_config.subaccounts:
-            try:
-                nav_wei = await self._fetch_portfolio_nav(
-                    subaccount_config.master_address
+            nav_wei = await self._fetch_portfolio_nav(
+                subaccount_config.master_address
+            )
+            if nav_wei > 0:
+                all_assets.append(
+                    AssetData(
+                        asset_address=self.usdc_address,
+                        amount=nav_wei,
+                    )
                 )
-                if nav_wei > 0:
-                    all_assets.append(
-                        AssetData(
-                            asset_address=self.usdc_address,
-                            amount=nav_wei,
-                        )
-                    )
-                    logger.info(
-                        "HyperCore sub-account %s: NAV=%.2f USDC",
-                        subaccount_config.master_address[:10],
-                        nav_wei / (10**TARGET_DECIMALS),
-                    )
-            except Exception as e:
-                logger.error(
-                    "Failed to fetch HyperCore sub-account %s: %s",
-                    subaccount_config.master_address,
-                    e,
+                logger.info(
+                    "HyperCore sub-account %s: NAV=%.2f USDC",
+                    subaccount_config.master_address[:10],
+                    nav_wei / (10**TARGET_DECIMALS),
                 )
 
         # Also fetch for subvault addresses in chain config
         for subvault in self._chain_config.subvault_addresses:
-            try:
-                nav_wei = await self._fetch_portfolio_nav(subvault)
-                if nav_wei > 0:
-                    all_assets.append(
-                        AssetData(
-                            asset_address=self.usdc_address,
-                            amount=nav_wei,
-                        )
+            nav_wei = await self._fetch_portfolio_nav(subvault)
+            if nav_wei > 0:
+                all_assets.append(
+                    AssetData(
+                        asset_address=self.usdc_address,
+                        amount=nav_wei,
                     )
-            except Exception as e:
-                logger.error(
-                    "Failed to fetch HyperCore subvault %s: %s",
-                    subvault,
-                    e,
                 )
 
         logger.info(
