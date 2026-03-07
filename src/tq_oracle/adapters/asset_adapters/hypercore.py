@@ -297,6 +297,9 @@ class HyperCoreAdapter(BaseAssetAdapter):
         except (TypeError, ValueError, InvalidOperation):
             raise ValueError(f"Invalid equity value for vault {vault_address}: {equity_str}")
 
+        if equity < 0:
+            raise ValueError(f"Negative equity for vault {vault_address}: {equity}")
+
         # Convert to wei using Decimal for precision
         nav_usdc_6_decimals = int(equity * USDC_DECIMAL_SCALE)
         nav_wei = nav_usdc_6_decimals * DECIMAL_MULTIPLIER
