@@ -259,16 +259,15 @@ class TestFetchPrices:
         assert result.prices == {"0x111": 100}
 
     @pytest.mark.asyncio
-    async def test_raises_on_wrong_base_asset(self, config):
-        """Should raise ValueError if base_asset is not ETH."""
+    async def test_skips_on_wrong_base_asset(self, config):
+        """Non-ETH base asset without coingecko_base_asset_id should gracefully skip."""
         adapter = CoinGeckoAdapter(config)
         wrong_base = "0xWrongBase"
 
-        with pytest.raises(ValueError, match="only supports ETH as base asset"):
-            await adapter.fetch_prices(
-                ["0xUSDC"],
-                PriceData(base_asset=wrong_base, prices={}),
-            )
+        accumulator = PriceData(base_asset=wrong_base, prices={"0x111": 42})
+        result = await adapter.fetch_prices(["0xUSDC"], accumulator)
+        assert result is accumulator
+        assert result.prices == {"0x111": 42}
 
     @pytest.mark.asyncio
     async def test_prices_configured_tokens(

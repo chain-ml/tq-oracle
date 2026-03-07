@@ -70,6 +70,7 @@ async def test_get_inflight_transfers_no_source_subvault(config):
 
     assert result.total_inflight_amount == 0
     assert result.inflight_count == 0
+    assert result.error is not None
     assert "Source subvault" in result.error
 
 

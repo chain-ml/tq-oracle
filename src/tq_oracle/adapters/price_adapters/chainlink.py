@@ -200,6 +200,11 @@ class ChainlinkAdapter(BasePriceAdapter):
 
         # Validation 4: Check staleness threshold
         price_age = block_timestamp - updated_at
+        if price_age < 0:
+            raise ValueError(
+                f"Chainlink {label} price has future timestamp: "
+                f"updatedAt={updated_at} > blockTimestamp={block_timestamp}"
+            )
         if price_age > self.staleness_threshold:
             raise ValueError(
                 f"Chainlink {label} price stale: age={price_age}s exceeds "

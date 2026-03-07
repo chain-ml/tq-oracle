@@ -139,7 +139,11 @@ class CowSwapAdapter(BasePriceAdapter):
             - CoW API returns price per 1 whole token in ETH.
         """
         if prices_accumulator.base_asset != self.eth_address:
-            raise ValueError("CowSwap adapter only supports ETH as base asset")
+            logger.info(
+                "CowSwap adapter skipped: base asset is not ETH (base=%s)",
+                prices_accumulator.base_asset,
+            )
+            return prices_accumulator
 
         for asset_address in asset_addresses:
             if asset_address.lower() in self.skipped_assets:

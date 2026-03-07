@@ -18,7 +18,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from web3 import AsyncWeb3
+from web3 import AsyncWeb3, Web3
 
 import tq_oracle
 from tq_oracle.abi import load_abi
@@ -180,7 +180,7 @@ class CCTPBridgeAdapter(BaseBridgeAdapter):
         return TOKEN_MESSENGER_V2_PROD
 
     @staticmethod
-    def _extract_address_from_bytes32(w3: AsyncWeb3, bytes32_value: bytes) -> str:
+    def _extract_address_from_bytes32(w3: Web3 | AsyncWeb3, bytes32_value: bytes) -> str:
         """Extract 20-byte Ethereum address from bytes32 CCTP field.
 
         CCTP stores addresses as bytes32 with the actual address in the

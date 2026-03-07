@@ -51,6 +51,9 @@ class IdleBalancesAdapterSettings(BaseModel):
     # Map extra_address -> list of adapter names to run after idle_balances
     # e.g., { "0x17aeAbfD3cB214A8757bF07D2E248d526c8C4809": ["erc4626", "snusd"] }
     extra_address_adapters: dict[str, list[str]] = Field(default_factory=dict)
+    # Skip hardcoded DEFAULT_ADDITIONAL_ASSETS (e.g., osETH on mainnet).
+    # Useful for non-ETH base vaults that still need additional_asset_support for extra_addresses.
+    skip_default_additional_assets: bool = False
 
     model_config = ConfigDict(extra="ignore")
 
@@ -388,6 +391,7 @@ class OracleSettings(BaseSettings):
     coingecko_token_ids: dict[str, str] = Field(
         default_factory=dict
     )  # token_address -> coingecko_id mapping
+    coingecko_base_asset_id: str | None = None  # CoinGecko ID for non-ETH base asset (e.g., "tether-gold" for XAUT)
 
     # Manual price overrides (highest priority - overrides all price adapters)
     # Format: { "token_address": price_in_wei_18_decimals }

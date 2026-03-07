@@ -51,9 +51,10 @@ class IdleBalancesAdapter(BaseAssetAdapter):
 
         idle_cfg = config.adapters.idle_balances
 
+        idle_skip_defaults = idle_cfg.skip_default_additional_assets
         default_additional_raw = (
             DEFAULT_ADDITIONAL_ASSETS.get(config.network.value, {})
-            if config.additional_asset_support
+            if config.additional_asset_support and not idle_skip_defaults
             else {}
         )
         extra_additional_raw = (

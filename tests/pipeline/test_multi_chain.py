@@ -135,6 +135,7 @@ async def test_collect_chain_assets_handles_error(config, hypercore_chain_config
         result = await collect_chain_assets(config, hypercore_chain_config)
 
         assert result.success is False
+        assert result.error is not None
         assert "API unavailable" in result.error
 
 
@@ -180,6 +181,7 @@ async def test_check_bridge_inflight_unknown_type(config):
 
     result = await check_bridge_inflight(config, unknown_bridge)
 
+    assert result.error is not None
     assert "Unknown bridge type" in result.error
 
 

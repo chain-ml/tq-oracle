@@ -106,6 +106,9 @@ class SUSDeCooldownAdapter(BaseAssetAdapter):
             self.usde_token,
         )
 
+        # Block timestamp cache (avoids redundant RPC calls across subvaults)
+        self._block_timestamp: int | None = None
+
         # Initialize contract
         self.susde_contract = self.w3.eth.contract(
             address=self.susde_token,
@@ -164,9 +167,13 @@ class SUSDeCooldownAdapter(BaseAssetAdapter):
         cooldown_end = cooldown_data[0]
         underlying_amount = cooldown_data[1]
 
-        # Get current block timestamp to check if claimable
-        block_info = self.w3.eth.get_block(self.block_number)
-        current_timestamp = block_info["timestamp"]
+        # Get current block timestamp to check if claimable (cached)
+        if self._block_timestamp is None:
+            block_info = await self._rpc(
+                self.w3.eth.get_block, block_identifier=self.block_number
+            )
+            self._block_timestamp = int(block_info["timestamp"])
+        current_timestamp = self._block_timestamp
 
         is_claimable = cooldown_end > 0 and cooldown_end <= current_timestamp
 

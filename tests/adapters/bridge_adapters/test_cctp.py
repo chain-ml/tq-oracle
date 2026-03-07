@@ -203,6 +203,7 @@ async def test_get_inflight_transfers_no_subvaults(config):
 
     assert result.total_inflight_amount == 0
     assert result.inflight_count == 0
+    assert result.error is not None
     assert "not configured" in result.error
 
 

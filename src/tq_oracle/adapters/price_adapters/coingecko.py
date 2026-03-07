@@ -34,14 +34,13 @@ class CoinGeckoAdapter(BasePriceAdapter):
     This adapter:
     1. Maps token addresses to CoinGecko IDs
     2. Batches all configured tokens into a single API call
-    3. Fetches prices in ETH directly
+    3. Fetches prices in ETH (or USD for non-ETH base assets)
     4. Handles both free and Pro API tiers
 
-    Benefits:
-    - Stable pricing from CoinGecko's aggregated data
-    - Efficient batching (one API call for all tokens)
-    - No on-chain calls required
-    - Good fallback pricing source
+    For non-ETH base assets (e.g., XAUT), uses two-hop pricing:
+    1. Fetches all token prices in USD from CoinGecko
+    2. Fetches base asset price in USD (via coingecko_base_asset_id)
+    3. Converts: price_in_base = price_usd / base_usd
 
     Configuration:
         coingecko_enabled: bool = True
@@ -50,6 +49,7 @@ class CoinGeckoAdapter(BasePriceAdapter):
             "0xUSDC": "usd-coin",
             "0xUSDT": "tether",
         }
+        coingecko_base_asset_id: str | None = None  # e.g., "tether-gold" for XAUT
     """
 
     def __init__(self, config: OracleSettings):
@@ -104,6 +104,9 @@ class CoinGeckoAdapter(BasePriceAdapter):
             raise ValueError("ETH address is required for CoinGecko adapter")
         self.eth_address = eth_address
 
+        # Non-ETH base asset CoinGecko ID for two-hop USD pricing
+        self.base_asset_id: str | None = config.coingecko_base_asset_id
+
         # Web3 setup for fetching token decimals
         self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
         self.block_number = config.block_number_required
@@ -113,9 +116,10 @@ class CoinGeckoAdapter(BasePriceAdapter):
         self._session = requests.Session()
 
         logger.info(
-            "CoinGecko adapter initialized: tokens=%d, api=%s",
+            "CoinGecko adapter initialized: tokens=%d, api=%s, base_asset_id=%s",
             len(self.token_ids),
             "Pro" if self.api_key else "Free",
+            self.base_asset_id or "eth (default)",
         )
 
     @property
@@ -167,20 +171,16 @@ class CoinGeckoAdapter(BasePriceAdapter):
     async def _fetch_prices_batch(
         self,
         coingecko_ids: list[str],
+        vs_currency: str = "eth",
     ) -> dict[str, float]:
         """Fetch prices for multiple tokens in one API call.
 
         Args:
             coingecko_ids: List of CoinGecko IDs to fetch prices for
+            vs_currency: Currency to price against ("eth" or "usd")
 
         Returns:
-            Dict mapping coingecko_id -> price_in_eth
-
-        Example Response:
-            {
-                "usd-coin": { "eth": 0.000333 },
-                "tether": { "eth": 0.000332 }
-            }
+            Dict mapping coingecko_id -> price_in_vs_currency
         """
         # Build comma-separated ID list
         ids_param = ",".join(coingecko_ids)
@@ -190,7 +190,7 @@ class CoinGeckoAdapter(BasePriceAdapter):
 
         params = {
             "ids": ids_param,
-            "vs_currencies": "eth",
+            "vs_currencies": vs_currency,
             "precision": "18",  # Maximum precision
         }
 
@@ -198,7 +198,7 @@ class CoinGeckoAdapter(BasePriceAdapter):
         if self.api_key:
             headers["x-cg-pro-api-key"] = self.api_key
 
-        logger.debug("Fetching CoinGecko prices: ids=%s", ids_param)
+        logger.debug("Fetching CoinGecko prices: ids=%s, vs=%s", ids_param, vs_currency)
 
         response = await asyncio.to_thread(
             self._session.get,
@@ -214,12 +214,12 @@ class CoinGeckoAdapter(BasePriceAdapter):
         # Extract prices
         prices = {}
         for cg_id in coingecko_ids:
-            if cg_id in data and "eth" in data[cg_id]:
-                prices[cg_id] = float(data[cg_id]["eth"])
+            if cg_id in data and vs_currency in data[cg_id]:
+                prices[cg_id] = float(data[cg_id][vs_currency])
             else:
-                logger.warning("No price returned for CoinGecko ID: %s", cg_id)
+                logger.warning("No %s price returned for CoinGecko ID: %s", vs_currency, cg_id)
 
-        logger.debug("CoinGecko returned %d prices", len(prices))
+        logger.debug("CoinGecko returned %d prices (vs %s)", len(prices), vs_currency)
         return prices
 
     async def fetch_prices(
@@ -232,24 +232,29 @@ class CoinGeckoAdapter(BasePriceAdapter):
         This adapter batches all configured tokens into a single API call.
         Only processes assets that have CoinGecko ID mappings.
 
+        For ETH base: fetches prices in ETH directly.
+        For non-ETH base (e.g., XAUT): fetches prices in USD, then converts
+        to base asset using the base asset's USD price (two-hop).
+
         Args:
             asset_addresses: List of asset addresses to potentially price
             prices_accumulator: Existing price accumulator to update
 
         Returns:
             Updated price accumulator with CoinGecko prices
-
-        Notes:
-            - Batches all tokens into one API call
-            - Only processes tokens in coingecko_token_ids mapping
-            - Prices are in 18-decimal wei per 1 unit of asset
-            - Automatically normalizes for token decimals
         """
         if self._skip:
             return prices_accumulator
 
-        if prices_accumulator.base_asset != self.eth_address:
-            raise ValueError("CoinGecko adapter only supports ETH as base asset")
+        is_eth_base = prices_accumulator.base_asset == self.eth_address
+
+        if not is_eth_base and not self.base_asset_id:
+            logger.info(
+                "CoinGecko adapter skipped: non-ETH base asset and no "
+                "coingecko_base_asset_id configured (base=%s)",
+                prices_accumulator.base_asset,
+            )
+            return prices_accumulator
 
         # Find tokens to price (that have CoinGecko IDs)
         tokens_to_price: dict[str, str] = {}  # address -> coingecko_id
@@ -264,18 +269,30 @@ class CoinGeckoAdapter(BasePriceAdapter):
             logger.debug("No CoinGecko-mapped tokens to price")
             return prices_accumulator
 
-        # Batch fetch all prices in one API call
+        if is_eth_base:
+            return await self._fetch_eth_base_prices(
+                tokens_to_price, prices_accumulator
+            )
+        else:
+            return await self._fetch_two_hop_prices(
+                tokens_to_price, prices_accumulator
+            )
+
+    async def _fetch_eth_base_prices(
+        self,
+        tokens_to_price: dict[str, str],
+        prices_accumulator: PriceData,
+    ) -> PriceData:
+        """Fetch prices denominated directly in ETH."""
         try:
-            coingecko_ids = list(set(tokens_to_price.values()))  # Unique IDs
-            cg_prices = await self._fetch_prices_batch(coingecko_ids)
+            coingecko_ids = list(set(tokens_to_price.values()))
+            cg_prices = await self._fetch_prices_batch(coingecko_ids, vs_currency="eth")
         except Exception as e:
             logger.error("Failed to fetch CoinGecko prices: %s", e)
             return prices_accumulator
 
-        # Process each token
         priced_count = 0
         for asset_address, cg_id in tokens_to_price.items():
-            # Skip assets that already have prices from higher-priority adapters (Chainlink, Manual)
             if asset_address in prices_accumulator.prices:
                 logger.debug(
                     "Skipping %s - already priced by higher-priority adapter",
@@ -284,51 +301,107 @@ class CoinGeckoAdapter(BasePriceAdapter):
                 continue
 
             if cg_id not in cg_prices:
-                logger.warning(
-                    "No CoinGecko price for %s (id: %s)",
-                    asset_address,
-                    cg_id,
-                )
+                logger.warning("No CoinGecko price for %s (id: %s)", asset_address, cg_id)
                 continue
 
             try:
-                # Get price in ETH (float, already at maximum precision from API)
                 price_in_eth = cg_prices[cg_id]
-
-                # Convert to 18-decimal integer
-                # CoinGecko returns price per 1 whole token in ETH
-                # e.g., for USDC: 0.000333 ETH per 1 USDC -> 333000000000000 wei
-                # This format works directly with calculate_total_assets: amount * price // 10^token_decimals
                 price_wei = int(price_in_eth * (10**18))
 
                 prices_accumulator.prices[asset_address] = price_wei
 
-                # Fetch and store token decimals
                 token_decimals = await self.get_token_decimals(asset_address)
                 prices_accumulator.decimals[asset_address] = token_decimals
 
                 priced_count += 1
-
                 logger.info(
                     "CoinGecko priced %s: %d wei (id=%s, decimals=%d)",
-                    asset_address,
-                    price_wei,
-                    cg_id,
-                    token_decimals,
+                    asset_address, price_wei, cg_id, token_decimals,
                 )
-
             except Exception as e:
-                logger.warning(
-                    "Failed to process CoinGecko price for %s: %s",
+                logger.warning("Failed to process CoinGecko price for %s: %s", asset_address, e)
+                continue
+
+        logger.info("CoinGecko adapter priced %d/%d tokens (ETH base)", priced_count, len(tokens_to_price))
+        self.validate_prices(prices_accumulator)
+        return prices_accumulator
+
+    async def _fetch_two_hop_prices(
+        self,
+        tokens_to_price: dict[str, str],
+        prices_accumulator: PriceData,
+    ) -> PriceData:
+        """Fetch prices via USD two-hop for non-ETH base assets.
+
+        1. Fetch all token prices in USD
+        2. Fetch base asset price in USD (via coingecko_base_asset_id)
+        3. Convert: price_in_base = (token_usd / base_usd) * 10^18
+        """
+        # Gather all IDs including the base asset
+        assert self.base_asset_id is not None  # Guarded by caller check
+        base_asset_id: str = self.base_asset_id
+        coingecko_ids = list(set(tokens_to_price.values()))
+        if base_asset_id not in coingecko_ids:
+            coingecko_ids.append(base_asset_id)
+
+        try:
+            cg_prices_usd = await self._fetch_prices_batch(coingecko_ids, vs_currency="usd")
+        except Exception as e:
+            logger.error("Failed to fetch CoinGecko USD prices: %s", e)
+            return prices_accumulator
+
+        # Get base asset USD price
+        base_usd_price = cg_prices_usd.get(base_asset_id)
+        if not base_usd_price or base_usd_price <= 0:
+            logger.error(
+                "No CoinGecko USD price for base asset (id: %s), cannot do two-hop",
+                self.base_asset_id,
+            )
+            return prices_accumulator
+
+        logger.info(
+            "CoinGecko base asset USD price: %s = $%.4f",
+            self.base_asset_id,
+            base_usd_price,
+        )
+
+        priced_count = 0
+        for asset_address, cg_id in tokens_to_price.items():
+            if asset_address in prices_accumulator.prices:
+                logger.debug(
+                    "Skipping %s - already priced by higher-priority adapter",
                     asset_address,
-                    e,
                 )
                 continue
 
+            if cg_id not in cg_prices_usd:
+                logger.warning("No CoinGecko USD price for %s (id: %s)", asset_address, cg_id)
+                continue
+
+            try:
+                # Convert: token_usd / base_usd = how many base asset units per 1 token
+                token_usd_price = cg_prices_usd[cg_id]
+                price_in_base = token_usd_price / base_usd_price
+                price_wei = int(price_in_base * (10**18))
+
+                prices_accumulator.prices[asset_address] = price_wei
+
+                token_decimals = await self.get_token_decimals(asset_address)
+                prices_accumulator.decimals[asset_address] = token_decimals
+
+                priced_count += 1
+                logger.info(
+                    "CoinGecko two-hop priced %s: %d wei ($%.4f / $%.4f = %.6f base, id=%s, decimals=%d)",
+                    asset_address, price_wei, token_usd_price, base_usd_price,
+                    price_in_base, cg_id, token_decimals,
+                )
+            except Exception as e:
+                logger.warning("Failed to process CoinGecko price for %s: %s", asset_address, e)
+                continue
+
         logger.info(
-            "CoinGecko adapter priced %d/%d tokens",
-            priced_count,
-            len(tokens_to_price),
+            "CoinGecko adapter priced %d/%d tokens (USD two-hop via %s)",
+            priced_count, len(tokens_to_price), self.base_asset_id,
         )
 
         self.validate_prices(prices_accumulator)

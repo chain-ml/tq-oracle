@@ -224,6 +224,10 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
         vault_token = vault_config["vault_token"]
         underlying_asset = vault_config.get("underlying_asset")
         discount_tenths_bps = int(vault_config.get("market_discount", 0))
+        if not 0 <= discount_tenths_bps <= 20000:
+            raise ValueError(
+                f"market_discount must be between 0 and 20000, got {discount_tenths_bps}"
+            )
 
         # Get vault token balance
         vault_balance = await self._balance_of(vault_token, subvault_address)
@@ -351,6 +355,10 @@ class ERC4626VaultAdapter(BaseAssetAdapter):
                 # This IS a vault token we can convert!
                 underlying_asset = vault_config.get("underlying_asset")
                 discount_tenths_bps = int(vault_config.get("market_discount", 0))
+                if not 0 <= discount_tenths_bps <= 20000:
+                    raise ValueError(
+                        f"market_discount must be between 0 and 20000, got {discount_tenths_bps}"
+                    )
 
                 logger.info(
                     "ERC4626: detected vault token %s from previous adapter, converting to underlying",

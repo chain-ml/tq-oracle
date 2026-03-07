@@ -91,6 +91,9 @@ class HyperCoreAdapter(BaseAssetAdapter):
         self.usdc_address = usdc_address or USDC_HYPEREVM_MAINNET
         self.max_staleness_seconds = max_staleness_seconds
 
+        # Shared HTTP session for connection reuse
+        self._session = aiohttp.ClientSession(timeout=API_TIMEOUT)
+
         logger.debug(
             "HyperCore adapter initialized: api_url=%s, max_staleness=%ds",
             self.api_url,
@@ -128,13 +131,12 @@ class HyperCoreAdapter(BaseAssetAdapter):
             "user": address,
         }
 
-        async with aiohttp.ClientSession(timeout=API_TIMEOUT) as session:
-            async with session.post(url, json=payload) as response:
-                if response.status != 200:
-                    raise ValueError(
-                        f"HyperCore API error: {response.status} for {address}"
-                    )
-                data = await response.json()
+        async with self._session.post(url, json=payload) as response:
+            if response.status != 200:
+                raise ValueError(
+                    f"HyperCore API error: {response.status} for {address}"
+                )
+            data = await response.json()
 
         # Parse portfolio response
         # Format: [("day", {"accountValueHistory": [[timestamp_ms, value_str], ...]}), ...]
@@ -257,13 +259,12 @@ class HyperCoreAdapter(BaseAssetAdapter):
             "vaultAddress": vault_address,
         }
 
-        async with aiohttp.ClientSession(timeout=API_TIMEOUT) as session:
-            async with session.post(url, json=payload) as response:
-                if response.status != 200:
-                    raise ValueError(
-                        f"HyperCore vault API error: {response.status} for {vault_address}"
-                    )
-                data = await response.json()
+        async with self._session.post(url, json=payload) as response:
+            if response.status != 200:
+                raise ValueError(
+                    f"HyperCore vault API error: {response.status} for {vault_address}"
+                )
+            data = await response.json()
 
         # Parse vault details
         if not data:
@@ -295,6 +296,9 @@ class HyperCoreAdapter(BaseAssetAdapter):
             equity = Decimal(str(equity_str))
         except (TypeError, ValueError, InvalidOperation):
             raise ValueError(f"Invalid equity value for vault {vault_address}: {equity_str}")
+
+        if equity < 0:
+            raise ValueError(f"Negative equity for vault {vault_address}: {equity}")
 
         # Convert to wei using Decimal for precision
         nav_usdc_6_decimals = int(equity * USDC_DECIMAL_SCALE)
@@ -364,69 +368,48 @@ class HyperCoreAdapter(BaseAssetAdapter):
 
         # Fetch native vault NAVs
         for vault_config in self._chain_config.vaults:
-            try:
-                nav_wei = await self._fetch_vault_nav(vault_config.vault_address)
-                if nav_wei > 0:
-                    all_assets.append(
-                        AssetData(
-                            asset_address=self.usdc_address,
-                            amount=nav_wei,
-                        )
+            nav_wei = await self._fetch_vault_nav(vault_config.vault_address)
+            if nav_wei > 0:
+                all_assets.append(
+                    AssetData(
+                        asset_address=self.usdc_address,
+                        amount=nav_wei,
                     )
-                    name = vault_config.name or vault_config.vault_address[:10]
-                    logger.info(
-                        "HyperCore vault '%s': NAV=%.2f USDC",
-                        name,
-                        nav_wei / (10**TARGET_DECIMALS),
-                    )
-            except Exception as e:
-                logger.error(
-                    "Failed to fetch HyperCore vault %s: %s",
-                    vault_config.vault_address,
-                    e,
+                )
+                name = vault_config.name or vault_config.vault_address[:10]
+                logger.info(
+                    "HyperCore vault '%s': NAV=%.2f USDC",
+                    name,
+                    nav_wei / (10**TARGET_DECIMALS),
                 )
 
         # Fetch sub-account NAVs
         for subaccount_config in self._chain_config.subaccounts:
-            try:
-                nav_wei = await self._fetch_portfolio_nav(
-                    subaccount_config.master_address
+            nav_wei = await self._fetch_portfolio_nav(
+                subaccount_config.master_address
+            )
+            if nav_wei > 0:
+                all_assets.append(
+                    AssetData(
+                        asset_address=self.usdc_address,
+                        amount=nav_wei,
+                    )
                 )
-                if nav_wei > 0:
-                    all_assets.append(
-                        AssetData(
-                            asset_address=self.usdc_address,
-                            amount=nav_wei,
-                        )
-                    )
-                    logger.info(
-                        "HyperCore sub-account %s: NAV=%.2f USDC",
-                        subaccount_config.master_address[:10],
-                        nav_wei / (10**TARGET_DECIMALS),
-                    )
-            except Exception as e:
-                logger.error(
-                    "Failed to fetch HyperCore sub-account %s: %s",
-                    subaccount_config.master_address,
-                    e,
+                logger.info(
+                    "HyperCore sub-account %s: NAV=%.2f USDC",
+                    subaccount_config.master_address[:10],
+                    nav_wei / (10**TARGET_DECIMALS),
                 )
 
         # Also fetch for subvault addresses in chain config
         for subvault in self._chain_config.subvault_addresses:
-            try:
-                nav_wei = await self._fetch_portfolio_nav(subvault)
-                if nav_wei > 0:
-                    all_assets.append(
-                        AssetData(
-                            asset_address=self.usdc_address,
-                            amount=nav_wei,
-                        )
+            nav_wei = await self._fetch_portfolio_nav(subvault)
+            if nav_wei > 0:
+                all_assets.append(
+                    AssetData(
+                        asset_address=self.usdc_address,
+                        amount=nav_wei,
                     )
-            except Exception as e:
-                logger.error(
-                    "Failed to fetch HyperCore subvault %s: %s",
-                    subvault,
-                    e,
                 )
 
         logger.info(
