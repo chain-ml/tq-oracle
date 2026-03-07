@@ -287,6 +287,12 @@ async def collect_multi_chain_assets(
 
     # 3. Calculate net TVL
     result.net_tvl = result.gross_tvl - result.inflight_total
+    if result.net_tvl < 0:
+        raise ValueError(
+            f"Negative net TVL: gross={result.gross_tvl}, "
+            f"inflight={result.inflight_total}. "
+            f"In-flight amounts exceed gross TVL — possible bridge reconciliation error."
+        )
 
     # Log summary
     logger.info(
