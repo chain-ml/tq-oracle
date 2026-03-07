@@ -91,6 +91,9 @@ class HyperCoreAdapter(BaseAssetAdapter):
         self.usdc_address = usdc_address or USDC_HYPEREVM_MAINNET
         self.max_staleness_seconds = max_staleness_seconds
 
+        # Shared HTTP session for connection reuse
+        self._session = aiohttp.ClientSession(timeout=API_TIMEOUT)
+
         logger.debug(
             "HyperCore adapter initialized: api_url=%s, max_staleness=%ds",
             self.api_url,
@@ -128,13 +131,12 @@ class HyperCoreAdapter(BaseAssetAdapter):
             "user": address,
         }
 
-        async with aiohttp.ClientSession(timeout=API_TIMEOUT) as session:
-            async with session.post(url, json=payload) as response:
-                if response.status != 200:
-                    raise ValueError(
-                        f"HyperCore API error: {response.status} for {address}"
-                    )
-                data = await response.json()
+        async with self._session.post(url, json=payload) as response:
+            if response.status != 200:
+                raise ValueError(
+                    f"HyperCore API error: {response.status} for {address}"
+                )
+            data = await response.json()
 
         # Parse portfolio response
         # Format: [("day", {"accountValueHistory": [[timestamp_ms, value_str], ...]}), ...]
@@ -257,13 +259,12 @@ class HyperCoreAdapter(BaseAssetAdapter):
             "vaultAddress": vault_address,
         }
 
-        async with aiohttp.ClientSession(timeout=API_TIMEOUT) as session:
-            async with session.post(url, json=payload) as response:
-                if response.status != 200:
-                    raise ValueError(
-                        f"HyperCore vault API error: {response.status} for {vault_address}"
-                    )
-                data = await response.json()
+        async with self._session.post(url, json=payload) as response:
+            if response.status != 200:
+                raise ValueError(
+                    f"HyperCore vault API error: {response.status} for {vault_address}"
+                )
+            data = await response.json()
 
         # Parse vault details
         if not data:
