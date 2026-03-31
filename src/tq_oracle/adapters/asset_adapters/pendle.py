@@ -281,13 +281,19 @@ class PendleAdapter(BaseAssetAdapter):
         # pt_rate is in 18 decimals, so: value = (balance * rate) / 10^18
         asset_value = (pt_balance * pt_rate) // (10**18)
 
+        # Apply market discount if configured (tenths of basis points, same as ERC4626)
+        market_discount = int(market_config.get("market_discount", "0"))
+        if market_discount > 0:
+            asset_value = asset_value * (100000 - market_discount) // 100000
+
         logger.info(
-            "Pendle PT %s: balance=%d, rate=%d, value=%d %s",
+            "Pendle PT %s: balance=%d, rate=%d, value=%d %s (discount=%d tenths-bps)",
             market_name,
             pt_balance,
             pt_rate,
             asset_value,
             accounting_asset,
+            market_discount,
         )
 
         return [
@@ -327,13 +333,19 @@ class PendleAdapter(BaseAssetAdapter):
         # Calculate value in accounting asset
         asset_value = (lp_balance * lp_rate) // (10**18)
 
+        # Apply market discount if configured (tenths of basis points, same as ERC4626)
+        market_discount = int(market_config.get("market_discount", "0"))
+        if market_discount > 0:
+            asset_value = asset_value * (100000 - market_discount) // 100000
+
         logger.info(
-            "Pendle LP %s: balance=%d, rate=%d, value=%d %s",
+            "Pendle LP %s: balance=%d, rate=%d, value=%d %s (discount=%d tenths-bps)",
             market_name,
             lp_balance,
             lp_rate,
             asset_value,
             accounting_asset,
+            market_discount,
         )
 
         return [
@@ -438,13 +450,19 @@ class PendleAdapter(BaseAssetAdapter):
                     # Convert: PT amount → accounting asset amount
                     asset_value = (asset.amount * pt_rate) // (10**18)
 
+                    # Apply market discount if configured
+                    market_discount = int(market_config.get("market_discount", "0"))
+                    if market_discount > 0:
+                        asset_value = asset_value * (100000 - market_discount) // 100000
+
                     logger.info(
-                        "Pendle: converted PT %s: balance=%d, rate=%d, value=%d %s",
+                        "Pendle: converted PT %s: balance=%d, rate=%d, value=%d %s (discount=%d tenths-bps)",
                         market_name,
                         asset.amount,
                         pt_rate,
                         asset_value,
                         accounting_asset,
+                        market_discount,
                     )
 
                     return AssetData(
