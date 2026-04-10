@@ -171,6 +171,18 @@ class MorphoBlueAdapterSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class EulerV2AdapterSettings(BaseModel):
+    """Configuration options for Euler V2 adapter defaults."""
+
+    name: str | None = None
+    supply_vaults: dict[str, str] = Field(default_factory=dict)
+    # supply_vaults structure: { "eUSDC": "0x...", "eWETH": "0x..." }
+    borrow_vaults: dict[str, str] = Field(default_factory=dict)
+    # borrow_vaults structure: { "eUSDC": "0x...", "eWETH": "0x..." }
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class HyperCoreVaultConfig(BaseModel):
     """Configuration for a native Hyperliquid vault."""
 
@@ -279,6 +291,9 @@ class AdapterSettings(BaseModel):
     morpho_blue: MorphoBlueAdapterSettings = Field(
         default_factory=MorphoBlueAdapterSettings
     )
+    euler_v2: EulerV2AdapterSettings = Field(
+        default_factory=EulerV2AdapterSettings
+    )
 
     model_config = ConfigDict(extra="ignore")
 
@@ -313,6 +328,44 @@ class AdapterSettings(BaseModel):
         if isinstance(self.aave_v3, list):
             return self.aave_v3
         return [self.aave_v3]
+
+
+class UpshiftChainConfig(BaseModel):
+    """Per-chain configuration for multi-chain upshift pipeline.
+
+    Each chain specifies its own RPC, subaccounts, tracked tokens, gas config,
+    and adapter overrides. Assets are collected per-chain in parallel and
+    aggregated into a single TVL figure.
+
+    Example TOML:
+        [[upshift_chains]]
+        name = "mainnet"
+        network = "mainnet"
+        rpc = "https://ethereum-rpc.publicnode.com"
+        gas_reserve = 0.02
+
+        [upshift_chains.tracked_tokens]
+        ETH = "0xEee..."
+        WETH = "0xC02..."
+
+        [[upshift_chains.subaccount_adapters]]
+        subaccount_address = "0x..."
+        additional_adapters = ["aave_v3.aave"]
+    """
+
+    name: str  # Friendly name for logging
+    network: str = "mainnet"  # Network identifier
+    rpc: str  # RPC endpoint (required)
+    block_number: int | None = None  # Optional block number for state snapshot
+    required: bool = True  # If false, chain failure doesn't block report
+    gas_reserve: float = 0.0  # Native gas token to exclude per subaccount
+    gas_token_address: str = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+    gas_token_decimals: int = 18
+    tracked_tokens: dict[str, str] = Field(default_factory=dict)  # symbol → address
+    subaccount_adapters: list[dict[str, Any]] = Field(default_factory=list)
+    adapters: AdapterSettings = Field(default_factory=AdapterSettings)
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class OracleSettings(BaseSettings):
@@ -410,6 +463,15 @@ class OracleSettings(BaseSettings):
     # --- adapters (from config file only) ---
     subvault_adapters: list[dict[str, Any]] = []
     adapters: AdapterSettings = Field(default_factory=AdapterSettings)
+
+    # --- upshift mode (separate pipeline, no vault contract interaction) ---
+    base_asset_address: str | None = None  # Explicit base asset address (upshift mode)
+    tracked_tokens: dict[str, str] = Field(default_factory=dict)  # symbol → token address
+    subaccount_adapters: list[dict[str, Any]] = []  # Like subvault_adapters but for upshift
+    gas_reserve: float = 0.0  # Native gas token to exclude per subaccount (e.g., 0.02)
+    gas_token_address: str = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"  # Native gas token (ETH, MON, XPL, HYPE, etc.)
+    gas_token_decimals: int = 18  # Decimals of the gas token
+    upshift_chains: list[UpshiftChainConfig] = Field(default_factory=list)  # Multi-chain upshift
 
     # --- multi-chain configuration ---
     # Primary chain for redemption/deposit (default: use single-chain mode)

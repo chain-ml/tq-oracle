@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .aave_v3 import AaveV3Adapter
 from .base import BaseAssetAdapter
+from .euler_v2 import EulerV2Adapter
 from .hypercore import HyperCoreAdapter
 from .idle_balances import IdleBalancesAdapter
 from .morpho_blue import MorphoBlueAdapter
@@ -17,6 +18,7 @@ ADAPTER_REGISTRY: dict[str, type[BaseAssetAdapter]] = {
     "stakewise": StakeWiseAdapter,
     "aave_v3": AaveV3Adapter,
     "morpho_blue": MorphoBlueAdapter,
+    "euler_v2": EulerV2Adapter,
     "pendle": PendleAdapter,
     "erc4626": ERC4626VaultAdapter,
     "snusd": SNUSDAdapter,
@@ -92,6 +94,7 @@ __all__ = [
     "ADAPTER_REGISTRY",
     "MULTI_INSTANCE_ADAPTERS",
     "AaveV3Adapter",
+    "EulerV2Adapter",
     "ERC4626VaultAdapter",
     "HyperCoreAdapter",
     "IdleBalancesAdapter",

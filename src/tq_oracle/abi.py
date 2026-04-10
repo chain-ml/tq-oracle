@@ -31,6 +31,7 @@ ERC4626_ABI_PATH = ABIS_DIR / "ERC4626.json"
 SNUSD_ABI_PATH = ABIS_DIR / "SNUSD.json"
 PENDLE_ORACLE_ABI_PATH = ABIS_DIR / "PendleOracle.json"
 PENDLE_MARKET_ABI_PATH = ABIS_DIR / "PendleMarket.json"
+PENDLE_SY_ABI_PATH = ABIS_DIR / "PendleSY.json"
 CHAINLINK_FEED_ABI_PATH = ABIS_DIR / "ChainlinkFeed.json"
 UNISWAP_V4_POSITION_MANAGER_ABI_PATH = ABIS_DIR / "UniswapV4PositionManager.json"
 UNISWAP_V4_STATE_VIEW_ABI_PATH = ABIS_DIR / "UniswapV4StateView.json"
@@ -38,6 +39,7 @@ LIDO_WITHDRAWAL_QUEUE_ABI_PATH = ABIS_DIR / "LidoWithdrawalQueue.json"
 SUSDE_COOLDOWN_ABI_PATH = ABIS_DIR / "SUSDeCooldown.json"
 MORPHO_BLUE_ABI_PATH = ABIS_DIR / "MorphoBlue.json"
 MORPHO_IRM_ABI_PATH = ABIS_DIR / "MorphoIRM.json"
+EULER_VAULT_ABI_PATH = ABIS_DIR / "EulerVault.json"
 
 
 def load_abi(path: str | Path) -> list[dict]:
@@ -139,6 +141,11 @@ def load_pendle_market_abi() -> list[dict]:
     return load_abi(PENDLE_MARKET_ABI_PATH)
 
 
+def load_pendle_sy_abi() -> list[dict]:
+    """Load the Pendle SY (Standardized Yield) ABI."""
+    return load_abi(PENDLE_SY_ABI_PATH)
+
+
 def load_chainlink_feed_abi() -> list[dict]:
     """Load the Chainlink Feed ABI."""
     return load_abi(CHAINLINK_FEED_ABI_PATH)
@@ -172,6 +179,11 @@ def load_morpho_blue_abi() -> list[dict]:
 def load_morpho_irm_abi() -> list[dict]:
     """Load the Morpho IRM ABI."""
     return load_abi(MORPHO_IRM_ABI_PATH)
+
+
+def load_euler_vault_abi() -> list[dict]:
+    """Load the Euler V2 vault ABI."""
+    return load_abi(EULER_VAULT_ABI_PATH)
 
 
 def get_oracle_address_from_vault(settings: OracleSettings) -> ChecksumAddress:

@@ -38,7 +38,6 @@ NETWORK_ORACLE_HELPER_DEFAULTS = {
 
 app = typer.Typer(
     add_completion=False,
-    no_args_is_help=False,
     add_help_option=True,
     pretty_exceptions_enable=True,
     pretty_exceptions_short=True,
@@ -59,6 +58,28 @@ def _redacted_dump(settings: OracleSettings) -> dict:
 
 
 @app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to a TOML config file.",
+        ),
+    ] = None,
+):
+    """TVL reporting and Safe submission tool."""
+    if config_path:
+        os.environ["TQ_ORACLE_CONFIG"] = str(config_path)
+    if ctx.invoked_subcommand is None:
+        if config_path is None:
+            typer.echo(ctx.get_help())
+            raise typer.Exit(0)
+        ctx.invoke(report)
+
+
+@app.command()
 def report(
     vault_address: Annotated[
         str | None, typer.Argument(help="Vault address to report.")
@@ -145,7 +166,7 @@ def report(
 ):
     """Build a TVL report and (optionally) submit to Safe.
 
-    This is the default command that loads configuration, applies network-specific
+    This command loads configuration, applies network-specific
     defaults, validates settings, and executes the TVL reporting pipeline.
     """
     if config_path:
@@ -221,6 +242,130 @@ def report(
     from .pipeline.run import run_report
 
     asyncio.run(run_report(state, state.settings.vault_address_required))
+
+
+@app.command()
+def upshift(
+    vault_address: Annotated[
+        str | None, typer.Argument(help="Vault address for updateTotalAssets target.")
+    ] = None,
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to a TOML config file.",
+        ),
+    ] = None,
+    network: Annotated[
+        Network | None,
+        typer.Option(
+            "--network",
+            "-n",
+            help="Network to use (mainnet, sepolia, or base).",
+        ),
+    ] = None,
+    block_number: Annotated[
+        int | None,
+        typer.Option(
+            "--block-number",
+            help="Block number to use for rpc calls. If not provided, the latest block will be used.",
+        ),
+    ] = None,
+    vault_rpc: Annotated[
+        str | None,
+        typer.Option(
+            "--vault-rpc",
+            help="RPC endpoint; overrides default network RPC.",
+        ),
+    ] = None,
+    log_level: Annotated[
+        str | None,
+        typer.Option(
+            "--log-level",
+            help="Override logging verbosity (DEBUG, INFO, WARNING, ERROR).",
+        ),
+    ] = None,
+    show_config: Annotated[
+        bool,
+        typer.Option(
+            "--show-config",
+            help="Print effective config (with secrets redacted) and exit.",
+        ),
+    ] = False,
+):
+    """Compute TVL for an Upshift vault and output updateTotalAssets calldata.
+
+    This command collects assets from explicitly configured subaccounts,
+    prices them using the standard adapter chain, and outputs the encoded
+    updateTotalAssets(uint256) calldata for posting via Safe.
+    """
+    if config_path:
+        os.environ["TQ_ORACLE_CONFIG"] = str(config_path)
+
+    init_kwargs: dict[str, Network | bool | int | str] = {}
+    if network is not None:
+        init_kwargs["network"] = network
+    if block_number is not None:
+        init_kwargs["block_number"] = block_number
+    if vault_rpc is not None:
+        init_kwargs["vault_rpc"] = vault_rpc
+    if log_level is not None:
+        init_kwargs["log_level"] = log_level.upper()
+
+    settings = OracleSettings(**init_kwargs)
+
+    multi_chain = bool(settings.upshift_chains)
+
+    if not multi_chain:
+        if settings.vault_rpc is None:
+            settings.vault_rpc = NETWORK_RPC_DEFAULTS.get(settings.network)
+
+        if settings.block_number is None:
+            w3 = Web3(Web3.HTTPProvider(settings.vault_rpc_required))
+            settings.block_number = w3.eth.block_number
+
+    setup_logging(settings.log_level)
+    logger = _build_logger()
+    state = AppState(settings=settings, logger=logger)
+
+    if show_config:
+        typer.echo(json.dumps(_redacted_dump(settings), indent=2))
+        raise typer.Exit(code=0)
+
+    if vault_address:
+        state.settings.vault_address = vault_address
+
+    if not state.settings.vault_address:
+        raise typer.BadParameter("vault_address must be configured")
+    if not state.settings.base_asset_address:
+        raise typer.BadParameter(
+            "base_asset_address must be configured for upshift mode"
+        )
+
+    if multi_chain:
+        # Multi-chain: each chain has its own RPC + subaccounts
+        for chain_cfg in state.settings.upshift_chains:
+            if not chain_cfg.rpc:
+                raise typer.BadParameter(
+                    f"Chain '{chain_cfg.name}' must have 'rpc' configured"
+                )
+            if not chain_cfg.subaccount_adapters:
+                raise typer.BadParameter(
+                    f"Chain '{chain_cfg.name}' must have at least one subaccount_adapters entry"
+                )
+    else:
+        # Single-chain: require top-level vault_rpc + subaccount_adapters
+        if not state.settings.vault_rpc:
+            raise typer.BadParameter("vault_rpc must be configured")
+        if not state.settings.subaccount_adapters:
+            raise typer.BadParameter(
+                "At least one [[subaccount_adapters]] entry must be configured"
+            )
+
+    from .upshift.run import run_upshift
+
+    asyncio.run(run_upshift(state))
 
 
 def run() -> None:
