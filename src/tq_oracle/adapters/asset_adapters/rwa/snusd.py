@@ -103,6 +103,11 @@ class SNUSDAdapter(BaseAssetAdapter):
         self.cooldown_period = (
             overrides.get("cooldown_period") or adapter_config.cooldown_period or 864000
         )
+        self.market_discount = int(
+            overrides.get("market_discount")
+            or adapter_config.market_discount
+            or "0"
+        )
 
         if not snusd_token:
             raise ValueError("sNUSD adapter requires snusd_token configuration")
@@ -116,10 +121,11 @@ class SNUSDAdapter(BaseAssetAdapter):
         self._block_timestamp_cache: dict[int, int] = {}
 
         logger.debug(
-            "sNUSD adapter initialized: snusd=%s, nusd=%s, cooldown=%ds",
+            "sNUSD adapter initialized: snusd=%s, nusd=%s, cooldown=%ds, discount=%d tenths-bps",
             self.snusd_token,
             self.nusd_token,
             self.cooldown_period,
+            self.market_discount,
         )
 
     @property
@@ -318,12 +324,21 @@ class SNUSDAdapter(BaseAssetAdapter):
                 len(previous_assets),
             )
 
-        # Add total nUSD exposure
+        # Add total nUSD exposure (apply market discount to all: active + cooldown + claimable)
         if exposure.total_nusd > 0:
+            discounted_nusd = exposure.total_nusd
+            if self.market_discount > 0:
+                discounted_nusd = discounted_nusd * (100000 - self.market_discount) // 100000
+                logger.info(
+                    "sNUSD applied discount %d tenths-bps: %d → %d nUSD",
+                    self.market_discount,
+                    exposure.total_nusd,
+                    discounted_nusd,
+                )
             assets.append(
                 AssetData(
                     asset_address=self.nusd_token,
-                    amount=exposure.total_nusd,
+                    amount=discounted_nusd,
                 )
             )
 

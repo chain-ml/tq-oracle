@@ -446,11 +446,19 @@ def _build_chain_settings(
     """Build a settings overlay for a specific chain.
 
     Creates a copy of the base settings with chain-specific values for
-    RPC, gas config, tracked tokens, subaccounts, and adapters.
+    RPC, gas config, tracked tokens, subaccounts, network, and adapters.
     """
+    from ..settings import Network
+
+    try:
+        network = Network(chain.network)
+    except ValueError:
+        network = base.network
+
     return base.model_copy(update={
         "vault_rpc": chain.rpc,
         "block_number": block_number,
+        "network": network,
         "gas_reserve": chain.gas_reserve,
         "gas_token_address": chain.gas_token_address,
         "gas_token_decimals": chain.gas_token_decimals,

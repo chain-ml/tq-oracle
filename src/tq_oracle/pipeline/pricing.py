@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from ..abi import fetch_subvault_addresses
 from ..adapters import PRICE_ADAPTERS
+from ..adapters.price_adapters.aliases import apply_aliases, resolve_aliases
 from ..adapters.price_adapters.base import PriceData
 from ..checks.price_validators import PriceValidationError, run_price_validations
 from ..processors import (
@@ -34,10 +35,16 @@ async def price_assets(ctx: PipelineContext) -> None:
     log.info("Fetching prices for %d assets...", len(asset_addresses))
     price_data: PriceData = PriceData(base_asset=ctx.base_asset_required, prices={})
 
+    # Resolve cross-chain price aliases (substitute before pricing, copy back after)
+    alias_resolution = resolve_aliases(asset_addresses, s.price_aliases)
+    pricing_addresses = alias_resolution.pricing_addresses
+
     price_adapters = [AdapterClass(s) for AdapterClass in PRICE_ADAPTERS]
     for price_adapter in price_adapters:
-        price_data = await price_adapter.fetch_prices(asset_addresses, price_data)
+        price_data = await price_adapter.fetch_prices(pricing_addresses, price_data)
         log.debug("Price adapter returned %d prices", len(price_data.prices))
+
+    apply_aliases(price_data, alias_resolution)
 
     log.info("Running price validations...")
     try:
@@ -68,7 +75,7 @@ async def price_assets(ctx: PipelineContext) -> None:
 
     # Log per-subvault breakdown
     if ctx.subvault_asset_map:
-        log.info("Per-subvault asset breakdown:")
+        log.info("Per-subvault asset breakdown (mainnet):")
         subvault_addresses = await fetch_subvault_addresses(s)
 
         # Log each subvault's breakdown
@@ -85,5 +92,28 @@ async def price_assets(ctx: PipelineContext) -> None:
             for extra_addr, assets_for_extra in ctx.extra_addresses_assets.items():
                 await log_subvault_breakdown(
                     f"Extra Address: {extra_addr}", assets_for_extra, price_data, s,
+                    base_asset_decimals=s.base_asset_decimals,
+                )
+
+    # Log satellite chain subvault breakdowns
+    if ctx.chain_results:
+        from .multi_chain import _build_chain_settings
+
+        for chain_result in ctx.chain_results:
+            if not chain_result.subvault_asset_map:
+                continue
+
+            log.info(
+                "Per-subvault asset breakdown (%s):", chain_result.chain_name
+            )
+
+            # Build chain-specific settings so get_token_decimals uses the right RPC
+            chain_cfg = chain_result.chain_config
+            block_number = chain_result.block_number or chain_cfg.block_number or 0
+            chain_settings = _build_chain_settings(s, chain_cfg, block_number)
+
+            for subvault_addr, assets_list in chain_result.subvault_asset_map.items():
+                await log_subvault_breakdown(
+                    subvault_addr, assets_list, price_data, chain_settings,
                     base_asset_decimals=s.base_asset_decimals,
                 )

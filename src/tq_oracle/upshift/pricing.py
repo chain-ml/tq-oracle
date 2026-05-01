@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..adapters import PRICE_ADAPTERS
+from ..adapters.price_adapters.aliases import apply_aliases, resolve_aliases
 from ..adapters.price_adapters.base import PriceData
 from ..checks.price_validators import run_price_validations
 from ..processors.asset_aggregator import AggregatedAssets
@@ -38,10 +39,16 @@ async def price_all_assets(
 
     price_data = PriceData(base_asset=base_asset, prices={})
 
+    # Resolve cross-chain price aliases (substitute before pricing, copy back after)
+    alias_resolution = resolve_aliases(asset_addresses, s.price_aliases)
+    pricing_addresses = alias_resolution.pricing_addresses
+
     price_adapters = [AdapterClass(s) for AdapterClass in PRICE_ADAPTERS]
     for price_adapter in price_adapters:
-        price_data = await price_adapter.fetch_prices(asset_addresses, price_data)
+        price_data = await price_adapter.fetch_prices(pricing_addresses, price_data)
         log.debug("Price adapter returned %d prices", len(price_data.prices))
+
+    apply_aliases(price_data, alias_resolution)
 
     log.info("Running price validations...")
     await run_price_validations(s, price_data)

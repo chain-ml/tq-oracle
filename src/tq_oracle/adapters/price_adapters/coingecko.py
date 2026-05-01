@@ -140,6 +140,11 @@ class CoinGeckoAdapter(BasePriceAdapter):
         if cache_key in self._decimals_cache:
             return self._decimals_cache[cache_key]
 
+        # Native ETH sentinel has no contract; decimals are always 18
+        if cache_key == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee":
+            self._decimals_cache[cache_key] = 18
+            return 18
+
         erc20_abi = load_erc20_abi()
         token_contract = self.w3.eth.contract(
             address=Web3.to_checksum_address(token_address),

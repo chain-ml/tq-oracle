@@ -40,6 +40,7 @@ class Network(str, Enum):
     BASE = "base"
     HYPEREVM = "hyperevm"
     HYPERCORE = "hypercore"
+    MONAD = "monad"
 
 
 class IdleBalancesAdapterSettings(BaseModel):
@@ -117,6 +118,7 @@ class SNUSDAdapterSettings(BaseModel):
     snusd_token: str | None = None
     nusd_token: str | None = None
     cooldown_period: int | None = None  # Optional, defaults to 10 days (864000s)
+    market_discount: str | None = None  # Tenths of bps (e.g., "1200" = 1.2%)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -197,40 +199,6 @@ class HyperCoreSubAccountConfig(BaseModel):
 
     master_address: str
     agent_wallet: str | None = None  # Optional - for oracle read-only
-
-    model_config = ConfigDict(extra="ignore")
-
-
-class ChainConfig(BaseModel):
-    """Configuration for a chain in multi-chain setup.
-
-    Chains can be:
-    - primary: The main chain with redemption/deposit capability
-    - satellite: Contributes to TVL only
-
-    Example TOML:
-        [[chains]]
-        name = "mainnet"
-        network = "mainnet"
-        vault_address = "0x..."
-        rpc = "https://..."
-        role = "primary"
-        required = true
-    """
-
-    name: str  # Friendly name for logging
-    network: str  # Network identifier (mainnet, hyperevm, hypercore)
-    vault_address: str | None = None
-    rpc: str | None = None  # RPC endpoint for EVM chains
-    api_url: str | None = None  # API endpoint for non-EVM chains (HyperCore)
-    block_number: int | None = None  # Optional block number for state snapshot
-    role: Literal["primary", "satellite"] = "satellite"
-    required: bool = True  # If false, chain failure doesn't block report
-    subvault_addresses: list[str] = Field(default_factory=list)
-    adapters: dict[str, Any] = Field(default_factory=dict)  # Per-chain adapter config
-    # HyperCore-specific
-    vaults: list[HyperCoreVaultConfig] = Field(default_factory=list)
-    subaccounts: list[HyperCoreSubAccountConfig] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -328,6 +296,42 @@ class AdapterSettings(BaseModel):
         if isinstance(self.aave_v3, list):
             return self.aave_v3
         return [self.aave_v3]
+
+
+class ChainConfig(BaseModel):
+    """Configuration for a chain in multi-chain setup.
+
+    Chains can be:
+    - primary: The main chain with redemption/deposit capability
+    - satellite: Contributes to TVL only
+
+    Example TOML:
+        [[chains]]
+        name = "mainnet"
+        network = "mainnet"
+        vault_address = "0x..."
+        rpc = "https://..."
+        role = "primary"
+        required = true
+    """
+
+    name: str  # Friendly name for logging
+    network: str  # Network identifier (mainnet, hyperevm, hypercore, monad)
+    vault_address: str | None = None
+    rpc: str | None = None  # RPC endpoint for EVM chains
+    api_url: str | None = None  # API endpoint for non-EVM chains (HyperCore)
+    block_number: int | None = None  # Optional block number for state snapshot
+    role: Literal["primary", "satellite"] = "satellite"
+    required: bool = True  # If false, chain failure doesn't block report
+    subvault_addresses: list[str] = Field(default_factory=list)
+    tracked_tokens: dict[str, str] = Field(default_factory=dict)  # symbol → address
+    subvault_adapters: list[dict[str, Any]] = Field(default_factory=list)
+    adapters: AdapterSettings = Field(default_factory=AdapterSettings)  # Per-chain adapter config
+    # HyperCore-specific
+    vaults: list[HyperCoreVaultConfig] = Field(default_factory=list)
+    subaccounts: list[HyperCoreSubAccountConfig] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class UpshiftChainConfig(BaseModel):
@@ -449,6 +453,11 @@ class OracleSettings(BaseSettings):
     # Manual price overrides (highest priority - overrides all price adapters)
     # Format: { "token_address": price_in_wei_18_decimals }
     manual_prices: dict[str, int] = Field(default_factory=dict)
+
+    # Cross-chain price aliases
+    # Maps cross-chain token address → mainnet equivalent for pricing
+    # Format: { "monad_usdc_addr": "mainnet_usdc_addr" }
+    price_aliases: dict[str, str] = Field(default_factory=dict)
 
     # --- RPC settings ---
     max_calls: int = 3
@@ -707,6 +716,10 @@ class OracleSettings(BaseSettings):
             if self.network == Network.HYPERCORE:
                 # HyperCore uses USDC via API, return minimal asset map
                 return HYPEREVM_MAINNET_ASSETS
+            if self.network == Network.MONAD:
+                # Monad uses price_aliases for pricing; mainnet assets used as
+                # fallback reference for price adapter skip logic
+                return ETH_MAINNET_ASSETS
             raise ValueError(f"Unknown network: {self.network}")
 
         return network_assets_map[self.network]

@@ -236,6 +236,30 @@ async def test_fetch_prices_usds_not_supported_on_testnet(eth_address, usds_addr
 
 
 @pytest.mark.asyncio
+async def test_fetch_prices_skips_on_unsupported_network(eth_address):
+    """CowSwap should gracefully skip on unsupported networks (e.g., Monad)."""
+    monad_config = OracleSettings(
+        vault_address="0xVault",
+        oracle_helper_address="0xOracleHelper",
+        vault_rpc="https://rpc.monad.xyz",
+        block_number=1000000,
+        network=Network.MONAD,
+        safe_address=None,
+        dry_run=False,
+        private_key=None,
+        safe_txn_srvc_api_key=None,
+    )
+    adapter = CowSwapAdapter(monad_config)
+    assert adapter._skip is True
+    result = await adapter.fetch_prices(
+        ["0xSomeToken"],
+        PriceData(base_asset=eth_address, prices={"0x111": 42}),
+    )
+    # Should return accumulator unchanged
+    assert result.prices == {"0x111": 42}
+
+
+@pytest.mark.asyncio
 async def test_fetch_prices_preserves_precision(mocker, config, eth_address):
     adapter = CowSwapAdapter(config)
     test_asset_address = "0xTestAsset"

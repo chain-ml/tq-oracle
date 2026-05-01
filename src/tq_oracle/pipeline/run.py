@@ -110,6 +110,40 @@ async def run_report(state: AppState, vault_address: str) -> None:
 
     await run_preflight(ctx)
     await collect_assets(ctx)
+
+    # Collect from satellite chains and merge into aggregated assets
+    if s.chains:
+        from .multi_chain import collect_multi_chain_assets
+        from ..processors import compute_total_aggregated_assets
+
+        log.info("Collecting assets from %d satellite chain(s)...", len(s.chains))
+        multi_result = await collect_multi_chain_assets(s)
+
+        if multi_result.errors:
+            raise RuntimeError(
+                f"Required satellite chain(s) failed: {'; '.join(multi_result.errors)}"
+            )
+
+        # Store chain results for satellite breakdown logging
+        ctx.chain_results = [
+            cr for cr in multi_result.chain_results if cr.success
+        ]
+
+        if multi_result.all_assets:
+            log.info(
+                "Satellite chains contributed %d assets, merging into aggregated totals",
+                len(multi_result.all_assets),
+            )
+            # Re-aggregate: mainnet assets + satellite assets
+            mainnet_assets = ctx.raw_assets or []
+            combined = [mainnet_assets, multi_result.all_assets]
+            ctx.aggregated = await compute_total_aggregated_assets(combined)
+            ctx.raw_assets = mainnet_assets + multi_result.all_assets
+            log.info(
+                "After merge: %d unique assets in aggregated totals",
+                len(ctx.aggregated_required.assets),
+            )
+
     await price_assets(ctx)
 
     # Fetch supported assets from Oracle contract for calldata filtering

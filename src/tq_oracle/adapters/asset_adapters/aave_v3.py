@@ -76,16 +76,9 @@ class AaveV3Adapter(BaseAssetAdapter):
         self.instance_name = overrides.get("name", adapter_config.name)
         logger.debug("Instance name: %s", self.instance_name)
 
-        # Skip adapter if not on mainnet (for now)
-        self._skip = config.network != Network.MAINNET
-        if self._skip:
-            logger.info(
-                "Skipping Aave V3 adapter: network=%s (only mainnet supported)",
-                config.network.value,
-            )
-            return
+        is_mainnet = config.network == Network.MAINNET
 
-        logger.debug("Network check passed, initializing Web3...")
+        logger.debug("Initializing Web3...")
 
         # Initialize Web3 connection
         logger.debug("RPC URL: %s", config.vault_rpc_required)
@@ -121,9 +114,10 @@ class AaveV3Adapter(BaseAssetAdapter):
             self._rpc_timeout,
         )
 
-        # Pool address
+        # Pool address (mainnet default only when on mainnet)
+        default_pool = AAVE_V3_POOL_MAINNET if is_mainnet else None
         self.pool_address = overrides.get(
-            "pool_address", adapter_config.pool_address or AAVE_V3_POOL_MAINNET
+            "pool_address", adapter_config.pool_address or default_pool
         )
         logger.debug("Pool address: %s", self.pool_address)
 
@@ -135,7 +129,7 @@ class AaveV3Adapter(BaseAssetAdapter):
             self.supply_tokens = adapter_config.supply_tokens
             logger.debug("Using config supply_tokens: %s", self.supply_tokens)
         else:
-            self.supply_tokens = AAVE_V3_SUPPLY_TOKENS_MAINNET
+            self.supply_tokens = AAVE_V3_SUPPLY_TOKENS_MAINNET if is_mainnet else {}
             logger.debug("Using default supply_tokens: %s", self.supply_tokens)
 
         # Borrow tokens (variable debt)
@@ -146,7 +140,7 @@ class AaveV3Adapter(BaseAssetAdapter):
             self.borrow_tokens = adapter_config.borrow_tokens
             logger.debug("Using config borrow_tokens: %s", self.borrow_tokens)
         else:
-            self.borrow_tokens = AAVE_V3_BORROW_TOKENS_MAINNET
+            self.borrow_tokens = AAVE_V3_BORROW_TOKENS_MAINNET if is_mainnet else {}
             logger.debug("Using default borrow_tokens: %s", self.borrow_tokens)
 
         # Base asset type
@@ -316,9 +310,9 @@ class AaveV3Adapter(BaseAssetAdapter):
             subvault_address,
         )
 
-        if self._skip:
-            logger.debug("Adapter is skipped, returning empty list")
-            return []
+        if not self.pool_address:
+            logger.debug("No pool_address configured, returning previous assets or empty")
+            return previous_assets or []
 
         logger.debug("Starting to fetch Aave V3 positions...")
         results: list[AssetData] = []

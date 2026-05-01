@@ -104,13 +104,15 @@ class TestMorphoBlueAdapterInit:
         adapter = MorphoBlueAdapter(config)
         assert adapter.adapter_name == "morpho_blue"
 
-    def test_skips_on_non_mainnet(self, config_sepolia):
+    def test_works_on_non_mainnet(self, config_sepolia):
+        """Adapter should initialize on non-mainnet networks (no skip)."""
         adapter = MorphoBlueAdapter(config_sepolia)
-        assert adapter._skip is True
+        assert adapter.adapter_name == "morpho_blue"
+        assert adapter.morpho_address == DEFAULT_MORPHO_BLUE
 
-    def test_not_skipped_on_mainnet(self, config):
+    def test_works_on_mainnet(self, config):
         adapter = MorphoBlueAdapter(config)
-        assert adapter._skip is False
+        assert adapter.adapter_name == "morpho_blue"
 
     def test_uses_default_morpho_address(self, config):
         adapter = MorphoBlueAdapter(config)
@@ -307,16 +309,18 @@ class TestFetchAssets:
     """Tests for fetch_assets method."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_skipped(self, config_sepolia, subvault_address):
-        """Skipped adapter should return empty list."""
-        adapter = MorphoBlueAdapter(config_sepolia)
+    async def test_returns_empty_when_no_markets(self, config, subvault_address):
+        """No configured markets should return empty list."""
+        adapter = MorphoBlueAdapter(config)
         result = await adapter.fetch_assets(subvault_address)
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_no_markets(self, config, subvault_address):
-        """No configured markets should return empty list."""
-        adapter = MorphoBlueAdapter(config)
+    async def test_returns_empty_on_non_mainnet_no_markets(
+        self, config_sepolia, subvault_address
+    ):
+        """Non-mainnet adapter with no markets should return empty list."""
+        adapter = MorphoBlueAdapter(config_sepolia)
         result = await adapter.fetch_assets(subvault_address)
         assert result == []
 

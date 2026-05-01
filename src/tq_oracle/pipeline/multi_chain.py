@@ -16,8 +16,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
+from web3 import Web3
+
+from ..abi import load_erc20_abi
+from ..adapters.asset_adapters import get_adapter_class, parse_adapter_name
 from ..adapters.asset_adapters.base import AssetData
 from ..adapters.bridge_adapters import (
     BaseBridgeAdapter,
@@ -25,6 +29,7 @@ from ..adapters.bridge_adapters import (
     CCTPBridgeAdapter,
     EVMCoreBridgeAdapter,
 )
+from ..processors import compute_total_aggregated_assets
 
 if TYPE_CHECKING:
     from ..settings import BridgeConfig, ChainConfig, OracleSettings
@@ -49,6 +54,8 @@ class ChainAssetResult:
     total_amount: int = 0  # In base asset units (wei)
     error: str | None = None
     success: bool = True
+    subvault_asset_map: dict[str, list[AssetData]] = field(default_factory=dict)
+    block_number: int | None = None
 
 
 @dataclass
@@ -109,19 +116,8 @@ async def collect_chain_assets(
                 total_amount=total,
             )
 
-        # For other chains (mainnet, hyperevm), the existing pipeline handles them
-        # This function would be extended to support running standard adapters
-        # against different chain configurations
-        logger.debug(
-            f"Chain {chain_name} uses standard pipeline adapters"
-        )
-
-        return ChainAssetResult(
-            chain_name=chain_name,
-            chain_config=chain_config,
-            assets=[],
-            total_amount=0,
-        )
+        # Standard EVM chain — scan idle balances + run adapter chains
+        return await _collect_evm_chain_assets(config, chain_config)
 
     except Exception as e:
         logger.error(f"Failed to collect assets from chain {chain_name}: {e}")
@@ -131,6 +127,259 @@ async def collect_chain_assets(
             error=str(e),
             success=False,
         )
+
+
+def _build_chain_settings(
+    base: OracleSettings,
+    chain_config: ChainConfig,
+    block_number: int,
+) -> OracleSettings:
+    """Build a settings overlay for a specific chain.
+
+    Creates a copy of the base settings with chain-specific values for
+    RPC, block number, network, and adapters.
+    """
+    from ..settings import Network
+
+    try:
+        network = Network(chain_config.network)
+    except ValueError:
+        network = base.network
+
+    return base.model_copy(update={
+        "vault_rpc": chain_config.rpc,
+        "block_number": block_number,
+        "network": network,
+        "subvault_adapters": chain_config.subvault_adapters,
+        "adapters": chain_config.adapters,
+    })
+
+
+def _sanitize_adapter_kwargs(values: dict[str, Any]) -> dict[str, Any]:
+    """Drop None or empty collection values from adapter kwargs."""
+    return {
+        key: value
+        for key, value in values.items()
+        if value is not None and (not isinstance(value, (list, dict)) or value)
+    }
+
+
+def _create_adapter(
+    settings: OracleSettings,
+    adapter_name: str,
+    subvault_config: dict[str, Any],
+    adapter_defaults: dict[str, Any],
+):
+    """Create an adapter instance with proper config resolution."""
+    base_name, instance_name = parse_adapter_name(adapter_name)
+    adapter_class = get_adapter_class(adapter_name)
+
+    adapter_overrides: dict[str, Any] = {}
+    overrides_config = subvault_config.get("adapter_overrides", {})
+    if isinstance(overrides_config, dict):
+        candidate = overrides_config.get(adapter_name)
+        if candidate is None:
+            candidate = overrides_config.get(adapter_name.lower())
+        if candidate is None:
+            candidate = overrides_config.get(base_name)
+        if isinstance(candidate, dict):
+            adapter_overrides = candidate
+
+    if base_name == "aave_v3":
+        instance_config = settings.adapters.get_aave_v3_config(instance_name)
+        if instance_name and instance_config is None:
+            raise ValueError(
+                f"No configuration found for adapter instance '{adapter_name}'. "
+                f'Define [[adapters.aave_v3]] with name = "{instance_name}" in your config.'
+            )
+        if instance_config:
+            defaults = _sanitize_adapter_kwargs(
+                instance_config.model_dump(exclude_none=True)
+            )
+        else:
+            defaults = adapter_defaults.get(base_name, {})
+    else:
+        defaults = adapter_defaults.get(base_name, {})
+
+    adapter_kwargs = _sanitize_adapter_kwargs({**defaults, **adapter_overrides})
+
+    if adapter_kwargs:
+        return adapter_class(settings, **adapter_kwargs)
+    return adapter_class(settings)
+
+
+async def _run_adapter_chain(
+    settings: OracleSettings,
+    subvault_addr: str,
+    adapter_names: list[str],
+    subvault_config: dict[str, Any],
+) -> list[AssetData]:
+    """Run adapters sequentially, passing results forward (adapter chaining)."""
+    adapter_defaults = {
+        name.lower(): value
+        for name, value in settings.adapters.model_dump(
+            exclude_none=True, exclude_defaults=True
+        ).items()
+        if isinstance(value, dict)
+    }
+
+    accumulated: list[AssetData] | None = None
+
+    for adapter_name in adapter_names:
+        adapter = _create_adapter(
+            settings, adapter_name, subvault_config, adapter_defaults
+        )
+        new_assets = await adapter.fetch_assets(subvault_addr, accumulated)
+        accumulated = new_assets
+        logger.debug(
+            "Chain subvault %s → %s returned %d assets",
+            subvault_addr,
+            adapter_name,
+            len(new_assets) if new_assets else 0,
+        )
+
+    return accumulated or []
+
+
+async def _scan_idle_balances(
+    w3: Web3,
+    address: str,
+    token_addresses: list[str],
+    block_number: int,
+    settings: OracleSettings,
+) -> list[AssetData]:
+    """Scan ERC20 balances for tracked tokens at the given address."""
+    checksum_address = Web3.to_checksum_address(address)
+    erc20_abi = load_erc20_abi()
+    sem = asyncio.Semaphore(settings.rpc_max_concurrent_calls)
+
+    async def fetch_balance(token_addr: str) -> AssetData | None:
+        async with sem:
+            contract = w3.eth.contract(
+                address=Web3.to_checksum_address(token_addr), abi=erc20_abi
+            )
+            balance = await asyncio.wait_for(
+                asyncio.to_thread(
+                    contract.functions.balanceOf(checksum_address).call,
+                    block_identifier=block_number,
+                ),
+                timeout=settings.rpc_timeout,
+            )
+        if balance > 0:
+            return AssetData(asset_address=token_addr, amount=balance)
+        return None
+
+    results = await asyncio.gather(
+        *[fetch_balance(addr) for addr in token_addresses],
+        return_exceptions=True,
+    )
+
+    assets: list[AssetData] = []
+    for token_addr, result in zip(token_addresses, results):
+        if isinstance(result, Exception):
+            logger.error(
+                "Failed to fetch balance for %s at %s: %s",
+                token_addr, address, result,
+            )
+            raise result
+        if result is not None:
+            assets.append(result)
+
+    return assets
+
+
+async def _collect_evm_chain_assets(
+    config: OracleSettings,
+    chain_config: ChainConfig,
+) -> ChainAssetResult:
+    """Collect assets from a standard EVM chain.
+
+    For each configured subvault:
+    1. Scan idle balances for tracked tokens
+    2. Run adapter chains (euler_v2, morpho_blue, etc.)
+
+    Args:
+        config: Base oracle settings
+        chain_config: Chain-specific configuration
+
+    Returns:
+        ChainAssetResult with all assets from this chain
+    """
+    chain_name = chain_config.name
+
+    if not chain_config.rpc:
+        logger.warning("Chain %s has no RPC configured, skipping", chain_name)
+        return ChainAssetResult(
+            chain_name=chain_name,
+            chain_config=chain_config,
+        )
+
+    w3 = Web3(Web3.HTTPProvider(chain_config.rpc))
+    block_number = chain_config.block_number
+    if block_number is None:
+        block_number = w3.eth.block_number
+        logger.debug("Chain %s: resolved block number %d", chain_name, block_number)
+
+    chain_settings = _build_chain_settings(config, chain_config, block_number)
+
+    tracked_token_addresses = [
+        Web3.to_checksum_address(addr) for addr in chain_config.tracked_tokens.values()
+    ]
+
+    all_assets: list[list[AssetData]] = []
+    subvault_asset_map: dict[str, list[AssetData]] = {}
+
+    for sv_cfg in chain_config.subvault_adapters:
+        subvault_addr = sv_cfg["subvault_address"]
+        subvault_assets: list[AssetData] = []
+
+        # 1. Scan idle balances for tracked tokens
+        if tracked_token_addresses:
+            idle_assets = await _scan_idle_balances(
+                w3, subvault_addr, tracked_token_addresses, block_number, chain_settings
+            )
+            subvault_assets.extend(idle_assets)
+            logger.debug(
+                "Chain %s / Subvault %s: %d idle balances",
+                chain_name, subvault_addr, len(idle_assets),
+            )
+
+        # 2. Run adapter chain
+        adapter_names = sv_cfg.get("additional_adapters", [])
+        if adapter_names:
+            chain_assets = await _run_adapter_chain(
+                chain_settings, subvault_addr, adapter_names, sv_cfg
+            )
+            subvault_assets.extend(chain_assets)
+            logger.debug(
+                "Chain %s / Subvault %s: %d adapter assets",
+                chain_name, subvault_addr, len(chain_assets),
+            )
+
+        all_assets.append(subvault_assets)
+        subvault_asset_map[subvault_addr.lower()] = subvault_assets
+        logger.info(
+            "Chain %s / Subvault %s: %d total assets",
+            chain_name, subvault_addr, len(subvault_assets),
+        )
+
+    # Flatten for result
+    flat_assets = [asset for assets_list in all_assets for asset in assets_list]
+    total = sum(a.amount for a in flat_assets)
+
+    logger.info(
+        "Chain %s: collected %d assets from %d subvaults, total value: %d",
+        chain_name, len(flat_assets), len(chain_config.subvault_adapters), total,
+    )
+
+    return ChainAssetResult(
+        chain_name=chain_name,
+        chain_config=chain_config,
+        assets=flat_assets,
+        total_amount=total,
+        subvault_asset_map=subvault_asset_map,
+        block_number=block_number,
+    )
 
 
 async def check_bridge_inflight(

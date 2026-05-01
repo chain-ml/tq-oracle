@@ -20,7 +20,7 @@ from web3.exceptions import ProviderConnectionError
 
 from ...abi import load_morpho_blue_abi, load_morpho_irm_abi
 from ...logger import get_logger
-from ...settings import Network
+
 from .base import AssetData, BaseAssetAdapter
 
 if TYPE_CHECKING:
@@ -95,15 +95,6 @@ class MorphoBlueAdapter(BaseAssetAdapter):
                 - markets: Dict of market configurations
         """
         super().__init__(config)
-
-        # Skip if not on mainnet
-        self._skip = config.network != Network.MAINNET
-        if self._skip:
-            logger.info(
-                "Skipping Morpho Blue adapter: network=%s (only mainnet supported)",
-                config.network.value,
-            )
-            return
 
         # Initialize Web3
         self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
@@ -553,9 +544,6 @@ class MorphoBlueAdapter(BaseAssetAdapter):
         Returns:
             List of AssetData with positions
         """
-        if self._skip:
-            return previous_assets or []
-
         results: list[AssetData] = []
 
         # Process each configured market

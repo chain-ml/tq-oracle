@@ -56,15 +56,6 @@ class PendleAdapter(BaseAssetAdapter):
         """
         super().__init__(config)
 
-        # Skip if not on mainnet (for now)
-        self._skip = config.network != Network.MAINNET
-        if self._skip:
-            logger.info(
-                "Skipping Pendle adapter: network=%s (only mainnet supported)",
-                config.network.value,
-            )
-            return
-
         # Initialize Web3
         self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
         if not self.w3.is_connected():
@@ -81,9 +72,11 @@ class PendleAdapter(BaseAssetAdapter):
         # Load configuration
         adapter_config = config.adapters.pendle
 
+        # Oracle address: mainnet default only when on mainnet
+        default_oracle = PENDLE_ORACLE_MAINNET if config.network == Network.MAINNET else None
         self.oracle_address = overrides.get(
             "oracle_address",
-            adapter_config.oracle_address or PENDLE_ORACLE_MAINNET,
+            adapter_config.oracle_address or default_oracle,
         )
 
         # Markets configuration
@@ -275,7 +268,8 @@ class PendleAdapter(BaseAssetAdapter):
             return []
 
         # Get PT to asset rate
-        pt_rate = await self._get_pt_to_asset_rate(market_address)
+        twap_duration = int(market_config.get("twap_duration", "900"))
+        pt_rate = await self._get_pt_to_asset_rate(market_address, duration=twap_duration)
 
         # Calculate value in accounting asset
         # pt_rate is in 18 decimals, so: value = (balance * rate) / 10^18
@@ -328,7 +322,8 @@ class PendleAdapter(BaseAssetAdapter):
             return []
 
         # Get LP to asset rate
-        lp_rate = await self._get_lp_to_asset_rate(market_address)
+        twap_duration = int(market_config.get("twap_duration", "900"))
+        lp_rate = await self._get_lp_to_asset_rate(market_address, duration=twap_duration)
 
         # Calculate value in accounting asset
         asset_value = (lp_balance * lp_rate) // (10**18)
@@ -376,7 +371,8 @@ class PendleAdapter(BaseAssetAdapter):
         Returns:
             List of AssetData with positions valued in accounting assets
         """
-        if self._skip:
+        if not self.oracle_address:
+            logger.debug("No oracle_address configured, returning previous assets or empty")
             return previous_assets or []
 
         results: list[AssetData] = []

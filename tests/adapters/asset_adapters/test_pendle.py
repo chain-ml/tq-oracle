@@ -99,15 +99,21 @@ class TestPendleAdapterInit:
         adapter = PendleAdapter(mainnet_config)
         assert adapter.adapter_name == "pendle"
 
-    def test_skips_on_non_mainnet(self, sepolia_config):
-        """Adapter should skip on non-mainnet networks."""
+    def test_no_oracle_on_non_mainnet(self, sepolia_config):
+        """Non-mainnet without config should have no oracle address."""
         adapter = PendleAdapter(sepolia_config)
-        assert adapter._skip is True
+        assert adapter.oracle_address is None
 
-    def test_not_skipped_on_mainnet(self, mainnet_config):
-        """Adapter should not skip on mainnet."""
+    def test_has_oracle_on_mainnet(self, mainnet_config):
+        """Mainnet should use default oracle address."""
         adapter = PendleAdapter(mainnet_config)
-        assert adapter._skip is False
+        assert adapter.oracle_address == PENDLE_ORACLE_MAINNET
+
+    def test_non_mainnet_with_explicit_oracle(self, sepolia_config):
+        """Non-mainnet with explicit oracle should use provided value."""
+        custom_oracle = "0xCustomOracleAddress1234567890123456789012"
+        adapter = PendleAdapter(sepolia_config, oracle_address=custom_oracle)
+        assert adapter.oracle_address == custom_oracle
 
     def test_uses_default_oracle_address(self, mainnet_config):
         """Should use default Pendle oracle address when not specified."""
@@ -152,11 +158,21 @@ class TestPendleFetchAssets:
     """Tests for fetch_assets method with mocked RPC calls."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_skipped(self, sepolia_config, subvault_address):
-        """Skipped adapter should return empty list."""
+    async def test_returns_empty_when_no_oracle(self, sepolia_config, subvault_address):
+        """Adapter without oracle should return empty list."""
         adapter = PendleAdapter(sepolia_config)
         result = await adapter.fetch_assets(subvault_address)
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_previous_when_no_oracle(self, sepolia_config, subvault_address):
+        """Adapter without oracle should pass through previous assets."""
+        from tq_oracle.adapters.asset_adapters.base import AssetData
+
+        adapter = PendleAdapter(sepolia_config)
+        previous = [AssetData(asset_address="0xToken", amount=1000)]
+        result = await adapter.fetch_assets(subvault_address, previous)
+        assert result == previous
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_markets_configured(

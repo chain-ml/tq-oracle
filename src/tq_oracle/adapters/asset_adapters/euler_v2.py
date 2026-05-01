@@ -18,7 +18,6 @@ from web3.exceptions import ProviderConnectionError
 
 from ...abi import load_euler_vault_abi
 from ...logger import get_logger
-from ...settings import Network
 from .base import AssetData, BaseAssetAdapter
 
 if TYPE_CHECKING:
@@ -58,15 +57,6 @@ class EulerV2Adapter(BaseAssetAdapter):
                 - borrow_vaults: Dict of name -> e-vault address
         """
         super().__init__(config)
-
-        # Skip if not on mainnet
-        self._skip = config.network != Network.MAINNET
-        if self._skip:
-            logger.info(
-                "Skipping Euler V2 adapter: network=%s (only mainnet supported)",
-                config.network.value,
-            )
-            return
 
         # Initialize Web3
         self.w3 = Web3(Web3.HTTPProvider(config.vault_rpc_required))
@@ -259,9 +249,6 @@ class EulerV2Adapter(BaseAssetAdapter):
         Returns:
             List of AssetData with positions
         """
-        if self._skip:
-            return previous_assets or []
-
         results: list[AssetData] = []
 
         # --- Supply positions ---

@@ -72,13 +72,30 @@ class TestAaveV3AdapterInit:
         adapter = AaveV3Adapter(config)
         assert adapter.adapter_name == "aave_v3"
 
-    def test_skips_on_non_mainnet(self, config_sepolia):
+    def test_no_pool_on_non_mainnet(self, config_sepolia):
+        """Non-mainnet without config should have no pool address."""
         adapter = AaveV3Adapter(config_sepolia)
-        assert adapter._skip is True
+        assert adapter.pool_address is None
 
-    def test_not_skipped_on_mainnet(self, config):
+    def test_has_pool_on_mainnet(self, config):
         adapter = AaveV3Adapter(config)
-        assert adapter._skip is False
+        assert adapter.pool_address == AAVE_V3_POOL_MAINNET
+
+    def test_empty_defaults_on_non_mainnet(self, config_sepolia):
+        """Non-mainnet without config should have empty token dicts."""
+        adapter = AaveV3Adapter(config_sepolia)
+        assert adapter.supply_tokens == {}
+        assert adapter.borrow_tokens == {}
+
+    def test_non_mainnet_with_explicit_config(self, config_sepolia):
+        """Non-mainnet with explicit config should use provided values."""
+        adapter = AaveV3Adapter(
+            config_sepolia,
+            pool_address="0xCustomPool",
+            supply_tokens={"WETH": "0xaWETH"},
+        )
+        assert adapter.pool_address == "0xCustomPool"
+        assert adapter.supply_tokens == {"WETH": "0xaWETH"}
 
     def test_uses_default_pool_address(self, config):
         adapter = AaveV3Adapter(config)
@@ -140,11 +157,19 @@ class TestFetchAssets:
     """Tests for fetch_assets method."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_skipped(self, config_sepolia, subvault_address):
-        """Skipped adapter should return empty list."""
+    async def test_returns_empty_when_no_pool(self, config_sepolia, subvault_address):
+        """Adapter with no pool address should return empty list."""
         adapter = AaveV3Adapter(config_sepolia)
         result = await adapter.fetch_assets(subvault_address)
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_previous_when_no_pool(self, config_sepolia, subvault_address):
+        """Adapter with no pool should pass through previous assets."""
+        adapter = AaveV3Adapter(config_sepolia)
+        previous = [AssetData(asset_address="0xToken", amount=1000)]
+        result = await adapter.fetch_assets(subvault_address, previous)
+        assert result == previous
 
     @pytest.mark.asyncio
     async def test_returns_asset_data_list(

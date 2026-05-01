@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ..adapters.asset_adapters.base import AssetData
 from ..state import AppState
@@ -8,6 +9,9 @@ from ..processors import AggregatedAssets
 from ..processors import FinalPrices
 from ..adapters.price_adapters.base import PriceData
 from ..report import OracleReport
+
+if TYPE_CHECKING:
+    from .multi_chain import ChainAssetResult
 
 
 @dataclass
@@ -24,6 +28,7 @@ class PipelineContext:
     report: OracleReport | None = None
     supported_assets: set[str] | None = None
     extra_addresses_assets: dict[str, list[AssetData]] | None = None
+    chain_results: list[ChainAssetResult] = field(default_factory=list)
 
     @property
     def aggregated_required(self) -> AggregatedAssets:
